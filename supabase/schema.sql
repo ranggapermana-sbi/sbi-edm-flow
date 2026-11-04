@@ -221,6 +221,13 @@ grant execute on function public.can_edit_ticket(text) to authenticated;
 grant execute on function public.month_count(text, text, text) to authenticated;
 grant execute on function public.assign_ticket(text) to authenticated;
 
+-- Table access for the API. Written out explicitly so the schema works whether
+-- or not "Automatically expose new tables" is on. RLS above still decides rows.
+revoke all on public.reviewers, public.tickets, public.reviews from anon;
+revoke all on public.reviewers from authenticated;
+grant select, insert, update on public.tickets to authenticated;
+grant select, insert, update on public.reviews to authenticated;
+
 -- ============================================================
 -- 5. Screenshot storage (private)
 --    Files live under <user id>/<ticket id>/... Each hotel reads and
