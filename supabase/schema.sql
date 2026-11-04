@@ -227,6 +227,8 @@ revoke all on public.reviewers, public.tickets, public.reviews from anon;
 revoke all on public.reviewers from authenticated;
 grant select, insert, update on public.tickets to authenticated;
 grant select, insert, update on public.reviews to authenticated;
+-- the daily cleanup (api/cleanup.js) runs as service_role with the secret key
+grant select, delete on public.tickets, public.reviews to service_role;
 
 -- ============================================================
 -- 5. Screenshot storage (private)
