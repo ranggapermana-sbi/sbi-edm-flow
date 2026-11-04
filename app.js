@@ -183,11 +183,16 @@ function getHtmlResults(html,brandHex){
   const key=brandHex+"|"+html.length+"|"+html.slice(0,200)+html.slice(-200)+"|"+html;
   if(htmlCache.key===key)return htmlCache.result;
   if(htmlCache.pendingKey!==key){htmlCache.pendingKey=key;
-    loadFrame(html).then(doc=>{let r;try{r=htmlChecks(doc,checkFrame.contentWindow,html,brandHex);}catch(e){r=[{label:"Email HTML",status:"warn",detail:"The HTML could not be read. Copy it again from the code view."}];}
+    loadFrame(html).then(async doc=>{let r;try{const probe=await probeImages(doc);r=htmlChecks(doc,checkFrame.contentWindow,html,brandHex,probe);}catch(e){r=[{label:"Email HTML",status:"warn",detail:"The HTML could not be read. Copy it again from the code view."}];}
       if(htmlCache.pendingKey===key){htmlCache={key,result:r,pendingKey:null};refresh();}});}
   return[{label:"Reading the HTML…",status:"todo",detail:""}];
 }
-function htmlChecks(doc,win,html,brandHex){
+/* Loads every image the email uses (outside the frame) to learn whether it loads and its real pixel size.
+   Result per src: {ok,w,h}, or null when it did not answer in time (then it is not judged). */
+function imgSrcs(doc){return[...new Set([...doc.querySelectorAll("img[src],mj-image[src]")].map(i=>(i.getAttribute("src")||"").trim()).filter(s=>/^https?:\/\//i.test(s)))].slice(0,60);}
+function probeImages(doc){return Promise.all(imgSrcs(doc).map(src=>new Promise(res=>{const im=new Image();let done=false;const fin=v=>{if(!done){done=true;res([src,v]);}};
+  im.onload=()=>fin({ok:true,w:im.naturalWidth,h:im.naturalHeight});im.onerror=()=>fin({ok:false});setTimeout(()=>fin(null),10000);im.src=src;}))).then(e=>new Map(e)).catch(()=>new Map());}
+function htmlChecks(doc,win,html,brandHex,probe){
   const out=[];const brand=normColor(brandHex);const lower=html.toLowerCase();
   const css=n=>win.getComputedStyle(n);
   const colorOf=n=>normColor(css(n).color);
@@ -244,8 +249,8 @@ function htmlChecks(doc,win,html,brandHex){
   /* fonts: the font actually applied to each piece of text must include Helvetica, Georgia or Arial.
      Text with no font declared at all falls back to the email client's default and is not counted. */
   const okStack=v=>/helvetica|georgia|arial/i.test(v)||/^\s*(inherit|initial|unset|sans-serif|serif)\s*$/i.test(v);
-  const probe=doc.createElement("span");probe.setAttribute("style","all:initial");(doc.body||doc.documentElement).appendChild(probe);
-  const browserDefault=css(probe).fontFamily;probe.remove();
+  const fprobe=doc.createElement("span");fprobe.setAttribute("style","all:initial");(doc.body||doc.documentElement).appendChild(fprobe);
+  const browserDefault=css(fprobe).fontFamily;fprobe.remove();
   /* for each piece of visible text, the nearest declared font wins: an inline style or an MJML font-family
      attribute on the text or its wrappers; with neither, the font CSS rules applied */
   const declaredFont=n=>{for(let x=n;x&&x.nodeType===1&&x!==doc.body;x=x.parentElement){const st=x.getAttribute("style")||"";const m=st.match(/(?:^|;)\s*font-family\s*:\s*([^;]+)/i);if(m)return m[1];const a=x.getAttribute("font-family");if(a)return a;}return null;};
@@ -264,6 +269,71 @@ function htmlChecks(doc,win,html,brandHex){
   const divs=doc.querySelectorAll("mj-divider").length+doc.querySelectorAll("hr").length+all.filter(n=>!n.closest("mj-divider")&&/border-(top|bottom)\s*:[^;]*(#b4adad|solid)/i.test(n.getAttribute("style")||"")&&!n.textContent.trim()).length;
   out.push({label:"Dividers present (at least 3)",status:divs>=3?"pass":"warn",detail:divs>=3?`${divs} divider(s) found.`:`${divs} divider(s) found. Expected one below the logo, the main offer button and the last offer.`});
   out.push({label:"Unsubscribe link present",status:/unsubscribe/i.test(html)?"pass":"fail",detail:""});
+
+  /* ---------- how the email looks once rendered (no AI needed) ---------- */
+  const after=(a,b)=>!!(a&&b&&(a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING));
+  const findText=re=>all.find(n=>!n.closest("mj-head,style,script,title")&&re.test(n.textContent)&&![...n.children].some(c=>re.test(c.textContent)));
+  const exploreEl=findText(/explore\s+more\s+offers/i);
+  const sbecEl=findText(/our\s+loyalty\s+program|instant\s*benefits/i);
+  const footEl=footStart||findText(/unsubscribe/i);
+  const px=v=>{const m=String(v||"").match(/^\s*(\d+(?:\.\d+)?)\s*(px)?\s*$/i);return m?+m[1]:null;};
+
+  // images: every image loads, and none is shown wider than its real size (which looks blurry)
+  const mjBodyW=isMjml?(px((doc.querySelector("mj-body")||{getAttribute:()=>null}).getAttribute("width"))||600):600;
+  const shownWidth=i=>{
+    if(i.tagName.toLowerCase()==="mj-image"){const w=px(i.getAttribute("width"));if(w)return w;
+      const col=i.closest("mj-column");const sec=col&&col.parentElement;const cols=sec?Math.max(1,sec.querySelectorAll(":scope > mj-column").length):1;
+      const cw=col&&col.getAttribute("width");const colW=cw&&/%$/.test(cw)?mjBodyW*parseFloat(cw)/100:px(cw)||mjBodyW/cols;
+      const pad=px(i.getAttribute("padding-left"))!=null?px(i.getAttribute("padding-left"))+px(i.getAttribute("padding-right")||0):(/^\s*0(px)?\s*$/.test(i.getAttribute("padding")||"")?0:50);
+      return Math.max(0,colW-pad);}
+    return px(i.getAttribute("width"))||px((i.getAttribute("style")||"").match(/(?:^|;)\s*width\s*:\s*([^;]+)/i)?.[1])||Math.round(i.getBoundingClientRect().width)||null;};
+  const imgEls=[...doc.querySelectorAll("img[src],mj-image[src]")].filter(i=>/^https?:\/\//i.test(i.getAttribute("src")||""));
+  if(probe&&imgEls.length){
+    const broken=[],blurry=[];
+    imgEls.forEach(i=>{const src=i.getAttribute("src").trim();const p=probe.get(src);if(!p)return;
+      if(!p.ok){broken.push(nameOfSrc(src));return;}
+      const shown=shownWidth(i);if(!shown||shown<80)return; /* icons and spacers are skipped */
+      if(p.w<shown*0.95)blurry.push(`${nameOfSrc(src)} is ${p.w}px wide but shown at ${Math.round(shown)}px`);});
+    const uniq=a=>[...new Set(a)];
+    out.push({label:"Every image loads",status:broken.length?"fail":"pass",detail:broken.length?`${uniq(broken).length} image(s) did not load: ${uniq(broken).slice(0,3).join(", ")}. Re-upload them in Whizzmailer.`:`${probe.size} image(s) loaded.`});
+    out.push({label:"Images are sharp (not stretched)",status:blurry.length?"warn":"pass",detail:blurry.length?uniq(blurry).slice(0,3).join("; ")+". Upload a larger version (ideally twice the shown width).":"No image is shown larger than its real size."});
+  }
+  // width: emails are about 600px wide so they fit Outlook and phones
+  let widest=0;
+  if(isMjml)widest=mjBodyW;
+  else all.forEach(n=>{if(!/^(table|div|td|center|img)$/i.test(n.tagName))return;const w=px(n.getAttribute("width"))||px((n.getAttribute("style")||"").match(/(?:^|;)\s*(?:max-)?width\s*:\s*([^;]+)/i)?.[1]);if(w&&w>widest)widest=w;});
+  const overflow=!isMjml&&doc.documentElement.scrollWidth>(checkFrame.clientWidth||700)+2;
+  out.push({label:"Email width about 600px",status:overflow?"fail":widest>640?"warn":"pass",detail:overflow?"The content is wider than the screen and will be cut off in Outlook and on phones.":widest>640?`A block is ${widest}px wide. Keep the email at 600px.`:widest?`Widest block ${widest}px.`:""});
+  // overlap: absolute positioning or negative margins break in Gmail and Outlook
+  const overlapping=isMjml?[]:all.filter(n=>{const s=css(n);if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"||s.maxHeight==="0px"||n.getBoundingClientRect().height<=1)return false;
+    return/absolute|fixed/.test(s.position)||parseFloat(s.marginTop)<-2||parseFloat(s.marginLeft)<-2;});
+  out.push({label:"Nothing overlaps",status:overlapping.length?"warn":"pass",detail:overlapping.length?`${overlapping.length} element(s) are positioned over other content (absolute position or negative margin), e.g. "${(overlapping[0].textContent.trim()||overlapping[0].tagName.toLowerCase()).slice(0,30)}". This often breaks in Gmail and Outlook.`:""});
+  // section order: logo/hero at the top, then Explore More Offers, About SBEC, footer
+  const firstImg=imgEls[0]||doc.querySelector("img,mj-image");
+  if(!exploreEl)out.push({label:"Section order",status:"warn",detail:"The title \"Explore More Offers\" was not found above the other offers."});
+  else{const seq=[["the logo and hero image",firstImg],["Explore More Offers",exploreEl],["About SBEC",sbecEl],["the footer",footEl]].filter(x=>x[1]);
+    const bad=seq.slice(1).map((x,k)=>[seq[k],x]).filter(([a,b])=>!after(a[1],b[1]));
+    out.push({label:"Section order",status:bad.length?"warn":"pass",detail:bad.length?bad.map(([a,b])=>`${b[0]} appears before ${a[0]}`).join("; ")+".":"Logo and hero, Explore More Offers, About SBEC, footer."});}
+  // offer descriptions: at most 160 characters each
+  if(exploreEl){const BLOCK=/^(p|td|div|li|h[1-6]|mj-text)$/i;const blocks=new Set();
+    const w2=doc.createTreeWalker(doc.body||doc.documentElement,NodeFilter.SHOW_TEXT);let x;
+    while((x=w2.nextNode())){const n=x.parentElement;if(!n||!x.textContent.trim()||!after(exploreEl,n)||(sbecEl&&!after(n,sbecEl))||(footEl&&!after(n,footEl)))continue;
+      let b=n;while(b&&!BLOCK.test(b.tagName))b=b.parentElement;if(b&&b!==exploreEl)blocks.add(b);}
+    const long=[...blocks].filter(b=>![...b.querySelectorAll("p,div,td,li,table")].some(c=>c.textContent.trim())).map(b=>b.textContent.trim().replace(/\s+/g," ")).filter(t=>t.length>160);
+    out.push({label:"Offer descriptions 160 characters or less",status:long.length?"warn":"pass",detail:long.length?long.slice(0,2).map(t=>`${t.length} characters: "${t.slice(0,50)}…"`).join("; "):""});}
+  // prices: show the currency and whether they are nett
+  const stopAt=sbecEl||footEl;const parts=[];const w3=doc.createTreeWalker(doc.body||doc.documentElement,NodeFilter.SHOW_TEXT);let y;
+  while((y=w3.nextNode())){const n=y.parentElement;if(!n||n.closest("mj-head,style,script,title"))continue;if(stopAt&&!after(n,stopAt)&&n!==stopAt)break;parts.push(y.textContent);}
+  const offerText=parts.join(" ").replace(/\s+/g," ");
+  const CUR="(?:IDR|Rp\\.?|USD|US\\$|AUD|A\\$|NZD|NZ\\$|SGD|S\\$|MYR|RM|VND|₫|BHD|BD|SAR|AED|PHP|₱|THB|฿|CNY|RMB|¥|EUR|€|GBP|£|\\$)";
+  const amounts=[...offerText.matchAll(/\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d+)?\s?(?:k|K|rb|jt|juta|ribu|million)\b/g)];
+  const priced=[],bare=[];
+  amounts.forEach(m=>{const before=offerText.slice(Math.max(0,m.index-8),m.index),aft=offerText.slice(m.index+m[0].length,m.index+m[0].length+6);
+    if(new RegExp(CUR+"\\s?$","i").test(before)||new RegExp("^\\s?"+CUR,"i").test(aft))priced.push(m[0]);else bare.push(m[0].trim());});
+  if(!amounts.length)out.push({label:"Prices show currency and nett",status:"pass",detail:"No prices found in the offers."});
+  else{const nett=/\bnett?\b|\+\+|incl(?:\.|usive|uding)?\b|excl(?:\.|usive|uding)?\b|subject to|before tax|after tax|tax and service/i.test(offerText);
+    const issues=[bare.length?`no currency on ${[...new Set(bare)].slice(0,3).map(t=>`"${t}"`).join(", ")}`:"",nett?"":"say whether prices are nett (or ++ / subject to tax and service)"].filter(Boolean);
+    out.push({label:"Prices show currency and nett",status:issues.length?"warn":"pass",detail:issues.length?issues.join("; ")+".":`${amounts.length} price(s) checked.`});}
   return out;
 }
 
@@ -352,7 +422,8 @@ function refresh(){
     if(extra)d.append(extra);rail.append(d);};
   grp("delivery","Whizzmailer settings",dl);
   grp("html","HTML check",hl);
-  // AI
+  // AI: shown only when the server has a Claude API key
+  if(aiEnabled){
   const aiBox=el("div",{class:"ai-box"});
   const canAi=aiEnabled;const hasShots=form.files.length||form.screenshotIds.length;
   if(!canAi)aiBox.append(el("span",{class:"d"},"The visual check is not set up on this server yet."));
@@ -364,6 +435,7 @@ function refresh(){
   const aiList=form.ai&&form.aiSig===shotSig()?form.ai.findings:[];
   const aiD=el("details",{class:"grp","data-k":"ai"});if(first||open.has("ai"))aiD.open=true;
   const at=tally(aiList);aiD.append(el("summary",null,dot(aiSt==="off"?"info":aiSt),"Visual check by Claude",el("span",{class:"tally"},aiList.length?`${at.pass}/${aiList.length}`:"not run")),aiBox);rail.append(aiD);
+  }
   // manual
   const man=el("details",{class:"grp","data-k":"manual"});if(open.has("manual")||first)man.open=true;
   man.append(el("summary",null,dot(manualDone===MANUAL_IDS.length?"pass":"todo"),"Your checklist",el("span",{class:"tally"},`${manualDone}/${MANUAL_IDS.length}`)));
@@ -584,7 +656,7 @@ function renderDetail(){
     rr?el("p",{style:"margin:0 0 8px;font-size:12px;color:var(--muted)"},"Re-checked just now with the current checker (not saved)."):null,
     checkList(rr||r.html||[]),
     s.html&&hb?el("div",{class:"btnrow",style:"margin-top:10px"},el("button",{type:"button",class:"btn small",onclick:async e=>{e.target.disabled=true;e.target.textContent="Checking…";
-      try{const d=await loadFrame(s.html);recheckCache.set(id,htmlChecks(d,checkFrame.contentWindow,s.html,hb));htmlCache.key=null;}catch(err){toast("Could not re-check this HTML.");}renderDetail();}},"Re-run HTML check")):null));
+      try{const d=await loadFrame(s.html);const probe=await probeImages(d);recheckCache.set(id,htmlChecks(d,checkFrame.contentWindow,s.html,hb,probe));htmlCache.key=null;}catch(err){toast("Could not re-check this HTML.");}renderDetail();}},"Re-run HTML check")):null));
   const ck=s.checks||{};kids.push(el("div",{class:"sec"},el("h3",null,`Hotel checklist · ${MANUAL_IDS.filter(i=>ck[i]).length}/${MANUAL_IDS.length} confirmed`),checkList(MANUAL.flatMap(g=>g.items.map(([i,t])=>({label:g.sec?`${g.sec}: ${t}`:t,status:ck[i]?"pass":"todo"}))))));
   if(d&&(d.history||[]).length)kids.push(el("div",{class:"sec"},el("h3",null,"Review history"),el("div",{class:"hist"},d.history.slice().reverse().map(x=>el("div",null,statusPill(x.status)," ",el("span",{class:"code"},fmtWhen(x.at))," · ",nameOf(x.by),x.note?el("div",{style:"white-space:pre-wrap;margin-top:2px"},x.note):null)))));
   if(isApprover&&st!=="draft"){
