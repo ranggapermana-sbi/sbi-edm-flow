@@ -27,7 +27,8 @@ export default async function handler(req, res) {
   const key = process.env.SUPABASE_SECRET_KEY;
   if (!base || !key) return res.status(503).json({ error: "Cleanup is not set up." });
 
-  const headers = { apikey: key, authorization: `Bearer ${key}`, "content-type": "application/json" };
+  // new Supabase secret keys are not JWTs: send them on the apikey header only
+  const headers = { apikey: key, "content-type": "application/json" };
   const call = async (path, init = {}) => {
     const r = await fetch(base + path, { ...init, headers: { ...headers, ...(init.headers || {}) } });
     const text = await r.text();
@@ -73,7 +74,9 @@ export default async function handler(req, res) {
     }
   } catch (e) {
     result.errors.push(e.message);
+    console.error("cleanup failed", JSON.stringify(result));
     return res.status(500).json(result);
   }
+  console.log("cleanup done", JSON.stringify(result));
   return res.status(200).json(result);
 }
