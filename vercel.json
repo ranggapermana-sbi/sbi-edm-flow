@@ -1,0 +1,5 @@
+{
+  "functions": {
+    "api/visual-check.js": { "maxDuration": 60 }
+  }
+}

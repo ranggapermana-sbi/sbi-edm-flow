@@ -1,0 +1,9 @@
+{
+  "name": "sbi-edm-flow",
+  "private": true,
+  "type": "module",
+  "description": "SBI EDM self-inspection and approval portal",
+  "engines": {
+    "node": ">=18"
+  }
+}

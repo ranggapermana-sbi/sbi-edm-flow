@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>SBI EDM Approval</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}img{max-width:100%}[hidden]{display:none!important}
+/* Layout: work desk — form on the left, a sticky inspection rail on the right; queue and overview as plain tables */
+:root{
+  --paper:#f7f6f1; --card:#ffffff; --ink:#191640; --muted:#615f6e; --line:#dedbd1; --soft:#efede6;
+  --accent:#d7261e; --accent-ink:#ffffff; --title:#5e4501;
+  --ok:#1d7a4c; --ok-bg:#e3f2ea; --warn:#9a6200; --warn-bg:#fbf0d9; --bad:#bf2a20; --bad-bg:#fbe5e2; --todo:#7a7889; --todo-bg:#eeedf2;
+  --sans:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace; --serif:Georgia,"Times New Roman",serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#11111c; --card:#1a1a28; --ink:#ecebf5; --muted:#a4a3b6; --line:#2e2d42; --soft:#222134;
+  --accent:#ff5d52; --accent-ink:#16070a; --title:#dcbd6a;
+  --ok:#57c995; --ok-bg:#163126; --warn:#e7ad45; --warn-bg:#33270f; --bad:#ff7368; --bad-bg:#3a1917; --todo:#9b9ab0; --todo-bg:#262539; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --paper:#11111c; --card:#1a1a28; --ink:#ecebf5; --muted:#a4a3b6; --line:#2e2d42; --soft:#222134;
+  --accent:#ff5d52; --accent-ink:#16070a; --title:#dcbd6a;
+  --ok:#57c995; --ok-bg:#163126; --warn:#e7ad45; --warn-bg:#33270f; --bad:#ff7368; --bad-bg:#3a1917; --todo:#9b9ab0; --todo-bg:#262539; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5}
+.wrap{max-width:1240px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 48px}
+header.top{border-bottom:1px solid var(--line);background:var(--card)}
+header.top .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:12px 24px;padding-block:14px}
+.mark{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.01em}
+.mark .sq{width:26px;height:26px;border-radius:5px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-size:12px;font-weight:700}
+.mark small{display:block;font-weight:500;color:var(--muted);font-size:12px}
+nav.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto}
+nav.tabs button{font:inherit;font-weight:500;border:1px solid transparent;background:none;color:var(--muted);padding:6px 12px;border-radius:6px;cursor:pointer}
+nav.tabs button[aria-selected="true"]{color:var(--ink);background:var(--soft);border-color:var(--line)}
+nav.tabs button:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.who{font-size:12px;color:var(--muted)}
+.banner{margin-top:16px;padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:var(--warn-bg);color:var(--ink);font-size:13px}
+h1,h2.serif{font-family:var(--serif);font-style:italic;font-weight:400;color:var(--title);text-wrap:balance}
+h1{font-size:28px;margin:24px 0 4px}
+.lede{color:var(--muted);margin:0 0 20px;max-width:70ch}
+.grid-submit{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:24px;align-items:start}
+@media (max-width:960px){.grid-submit{grid-template-columns:minmax(0,1fr)}}
+fieldset{border:1px solid var(--line);border-radius:10px;background:var(--card);padding:16px 18px 18px;margin:0 0 16px;min-width:0}
+legend{font-weight:600;padding:0 6px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px}
+@media (max-width:620px){.row{grid-template-columns:minmax(0,1fr)}}
+.full{grid-column:1/-1}
+label.f{display:flex;flex-direction:column;gap:5px;font-weight:500;font-size:13px;min-width:0}
+label.f .hint{font-weight:400;color:var(--muted);font-size:12px}
+input[type=text],input[type=email],input[type=url],input[type=datetime-local],input[type=month],input[type=search],select,textarea{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:8px 10px;width:100%;min-width:0}
+textarea{min-height:110px;resize:vertical;font-family:var(--mono);font-size:12px}
+textarea.plain{font-family:var(--sans);font-size:14px;min-height:70px}
+.expect{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.expect code{font-family:var(--mono);background:var(--soft);padding:1px 6px;border-radius:4px;color:var(--ink);word-break:break-all}
+input:disabled,select:disabled,textarea:disabled{background:var(--soft);color:var(--muted);cursor:not-allowed;opacity:1}
+.revise{border:1px solid var(--line);border-left:4px solid var(--bad);background:var(--card);border-radius:10px;padding:12px 16px;margin:0 0 16px;font-size:13px}
+.revise b{display:block;margin-bottom:4px}
+.btn{font:inherit;font-weight:600;border-radius:7px;padding:9px 16px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+.btn.small{padding:3px 9px;font-size:12px;font-weight:500}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.ok{background:var(--ok);border-color:var(--ok);color:var(--card)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btnrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.brandchip{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.sw{width:16px;height:16px;border-radius:4px;border:1px solid var(--line);display:inline-block;flex:none}
+.thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.thumbs img{width:84px;height:120px;object-fit:cover;object-position:top;border:1px solid var(--line);border-radius:6px;background:var(--soft)}
+/* inspection rail */
+.rail{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+@media (max-width:960px){.rail{position:static}}
+.rail-head{padding:16px 18px;border-bottom:1px solid var(--line)}
+.rail-head h2{margin:0;font-family:var(--serif);font-style:italic;font-weight:400;color:var(--title);font-size:20px}
+.meter{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--todo-bg);margin:10px 0 6px}
+.meter span{display:block;height:100%}
+.counts{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.rail-body{max-height:calc(100vh - 220px);overflow:auto;padding:4px 0}
+@media (max-width:960px){.rail-body{max-height:none}}
+.grp{border-bottom:1px solid var(--line)}
+.grp > summary{list-style:none;cursor:pointer;padding:11px 18px;display:flex;align-items:center;gap:10px;font-weight:600;font-size:13px}
+.grp > summary::-webkit-details-marker{display:none}
+.grp > summary .tally{margin-left:auto;font-weight:500;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.grp ul{list-style:none;margin:0;padding:0 18px 12px;display:flex;flex-direction:column;gap:6px}
+.ck{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;font-size:13px}
+.ck .d{color:var(--muted);font-size:12px;display:block;word-break:break-word}
+.pill{display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;border-radius:999px;padding:2px 8px;white-space:nowrap}
+.dot{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;margin-top:1px}
+.s-pass{color:var(--ok);background:var(--ok-bg)} .s-warn{color:var(--warn);background:var(--warn-bg)} .s-fail{color:var(--bad);background:var(--bad-bg)} .s-todo,.s-info{color:var(--todo);background:var(--todo-bg)}
+.manual label{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;font-size:13px;cursor:pointer}
+.manual input{margin-top:3px;accent-color:var(--accent)}
+.rail-foot{padding:14px 18px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px;background:var(--soft)}
+.blockers{font-size:12px;color:var(--muted);margin:0;padding-left:18px}
+.ai-box{display:flex;flex-direction:column;gap:8px;padding:0 18px 14px}
+.ai-sum{font-size:13px;background:var(--soft);border-radius:8px;padding:8px 10px}
+/* tables */
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 12px}
+.toolbar > *{width:auto}
+.tablebox{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{text-align:left;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--soft)}
+.code{font-family:var(--mono);font-size:12px}
+.num{font-variant-numeric:tabular-nums;text-align:right}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.tile b{display:block;font-size:28px;font-variant-numeric:tabular-nums;line-height:1.2}
+.tile span{font-size:12px;color:var(--muted)}
+/* detail */
+.overlay{position:fixed;inset:0;background:rgba(10,10,20,.45);display:flex;justify-content:flex-end;z-index:20}
+.drawer{background:var(--paper);width:min(760px,100%);height:100%;overflow:auto;padding-block:calc(env(safe-area-inset-top,0px) + 18px) calc(env(safe-area-inset-bottom,0px) + 32px);padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px));border-left:1px solid var(--line)}
+.drawer h2{margin:0;font-family:var(--serif);font-style:italic;font-weight:400;color:var(--title);font-size:24px}
+.meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 18px;margin:14px 0;font-size:13px}
+@media (max-width:560px){.meta{grid-template-columns:minmax(0,1fr)}}
+.meta div{min-width:0;word-break:break-word}
+.meta dt{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.meta dd{margin:0}
+.sec{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:12px 0}
+.sec h3{margin:0 0 8px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.shots{display:flex;gap:10px;overflow-x:auto}
+.shots img{max-height:420px;width:auto;border:1px solid var(--line);border-radius:6px}
+.steps{display:inline-flex;gap:3px;margin-top:6px}
+.steps i{width:18px;height:4px;border-radius:2px;background:var(--todo-bg);display:block}
+.steps i.on{background:var(--ok)} .steps i.now{background:var(--warn)} .steps i.bad{background:var(--bad)}
+.stepper{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:14px 0 4px}
+.stepper div{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted);min-width:0}
+.stepper div::before{content:"";height:5px;border-radius:3px;background:var(--todo-bg)}
+.stepper .on::before{background:var(--ok)} .stepper .now::before{background:var(--warn)} .stepper .bad::before{background:var(--bad)}
+.stepper .on,.stepper .now,.stepper .bad{color:var(--ink);font-weight:600}
+.ticket{font-family:var(--mono);font-size:12px;font-weight:500;letter-spacing:.02em}
+.hist{font-size:13px;display:flex;flex-direction:column;gap:6px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 20px);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:8px;font-size:13px;z-index:40;max-width:calc(100% - 32px)}
+.guide{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.guide .sec{margin:0}
+.guide ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}
+.swatches div{display:flex;align-items:center;gap:8px;font-size:13px}
+.login{max-width:460px;margin:8vh auto 0;background:var(--card);border:1px solid var(--line);border-radius:12px;padding-block:8px 24px;padding-inline:24px}
+.login form{display:flex;flex-direction:column;gap:14px}
+.login-msg{margin:16px 0 0;font-size:13px;color:var(--ink);background:var(--soft);border-radius:8px;padding:10px 12px}
+.who{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="mark"><span class="sq" aria-hidden="true">SBI</span><div>EDM Approval<small>Group Digital Marketing</small></div></div>
+    <nav class="tabs" role="tablist" hidden>
+      <button role="tab" id="tab-submit" aria-selected="true" data-view="submit">Submit EDM</button>
+      <button role="tab" id="tab-queue" aria-selected="false" data-view="queue">Tickets</button>
+      <button role="tab" id="tab-overview" aria-selected="false" data-view="overview">Overview</button>
+      <button role="tab" id="tab-guide" aria-selected="false" data-view="guide">Guidelines</button>
+    </nav>
+    <div class="who" id="who">Connecting…</div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="banner" id="offline" hidden>This portal is not configured yet. Add SUPABASE_URL and SUPABASE_ANON_KEY to the Vercel project settings, then redeploy.</div>
+
+  <!-- SIGN IN -->
+  <section id="view-login" hidden>
+    <div class="login">
+      <h1>Sign in</h1>
+      <p class="lede">Enter your work email and we will send you a sign-in link. No password needed.</p>
+      <form id="login-form" novalidate>
+        <label class="f">Work email
+          <input type="email" id="login-email" placeholder="name@swiss-belhotel.com" autocomplete="email" required>
+        </label>
+        <button class="btn primary" id="login-btn" type="submit">Email me a sign-in link</button>
+      </form>
+      <p class="login-msg" id="login-msg" hidden></p>
+    </div>
+  </section>
+
+  <!-- SUBMIT -->
+  <section id="view-submit">
+    <h1 id="form-title">New EDM submission</h1>
+    <p class="lede">Fill in the Whizzmailer settings, add a full-page screenshot of the email and, if you can, its HTML. The inspection panel checks everything against the 2026 EDM Template guideline. Submit unlocks when nothing is left to fix.</p>
+    <div class="grid-submit">
+      <form id="form" autocomplete="off" novalidate>
+        <div class="revise" id="revise-banner" hidden></div>
+        <fieldset>
+          <legend>Hotel &amp; campaign</legend>
+          <div class="row">
+            <label class="f full">Hotel
+              <input type="text" id="f-hotel-q" list="hotel-list" placeholder="Type a hotel name or code, e.g. Manyar or SIMY" autocomplete="off">
+              <datalist id="hotel-list"></datalist>
+              <select id="f-hotel" hidden aria-hidden="true" tabindex="-1"><option value=""></option></select>
+              <span class="brandchip" id="brandchip"></span>
+            </label>
+            <label class="f">PIC name
+              <input type="text" id="f-pic" placeholder="Person responsible for this EDM" autocomplete="name">
+            </label>
+            <label class="f">PIC position
+              <input type="text" id="f-picpos" placeholder="e.g. Marketing Communication Manager" autocomplete="organization-title">
+            </label>
+            <label class="f">Campaign / main offer name
+              <input type="text" id="f-campaign" placeholder="e.g. Roomtober Fest">
+            </label>
+            <label class="f">Main offer type
+              <select id="f-offertype">
+                <option value="room">Room package</option>
+                <option value="fnb">F&amp;B package</option>
+                <option value="social">Social event / wedding</option>
+                <option value="meeting">Meeting package</option>
+              </select>
+              <span class="hint">The guideline recommends a room package as the main offer.</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Delivery setting</legend>
+          <div class="row">
+            <label class="f full">Subject
+              <input type="text" id="f-subject" placeholder="Enjoy Up to 35% OFF* on Rooms and Dining 🎉">
+              <span class="hint">Enticing and inviting wording, about 60 characters or fewer. Sample: Enjoy Up to 20% OFF* and Make This School Holiday Extra Special! 🎉</span>
+            </label>
+            <label class="f full">Preheader text
+              <input type="text" id="f-preheader" placeholder="Supports the subject line">
+              <span class="hint">Promotional wording that supports the subject. Sample: Family fun, kids' activities and special savings, all in one getaway!</span>
+            </label>
+            <label class="f">Start sending (Jakarta time)
+              <input type="datetime-local" id="f-start">
+              <span class="hint" id="x-start">At least 3 working days (Mon–Fri) after you submit.</span>
+            </label>
+            <label class="f">Stop sending (Jakarta time)
+              <input type="datetime-local" id="f-stop" disabled>
+              <span class="hint" id="x-stop">Choose the start first. Stop must be within 5 days after it.</span>
+            </label>
+            <label class="f full">Internal name
+              <input type="text" id="f-internal" placeholder="[HOTEL CODE] - DD Mon YYYY">
+              <span class="expect" id="x-internal"></span>
+            </label>
+            <label class="f full">UTM campaign name
+              <input type="text" id="f-utm" placeholder="whizz-edm-[HOTEL CODE]-DDMonYYYY">
+              <span class="expect" id="x-utm"></span>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Sender setting</legend>
+          <div class="row">
+            <label class="f">From name
+              <input type="text" id="f-from" placeholder="Complete hotel name">
+              <span class="expect" id="x-from"></span>
+            </label>
+            <label class="f">Reply-to address
+              <input type="email" id="f-replyto" placeholder="reservations@swiss-belhotel.com">
+              <span class="hint">The hotel's reservations email or another relevant department. Sample: reservationsbse@swiss-belhotel.com</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Email content</legend>
+          <div class="row">
+            <label class="f full">Preview URL
+              <input type="url" id="f-preview" placeholder="https://v2-swiss-belhotel.whizzmailer.com/email/preview/…">
+              <span class="hint">Toggle Preview URL on in Whizzmailer, then copy the link.</span>
+            </label>
+            <label class="f full">Full-page screenshot(s)
+              <input type="file" id="f-shots" accept="image/png,image/jpeg,image/webp" multiple>
+              <span class="hint">Capture the whole email from the preview page (logo to unsubscribe line). Used for the visual check.</span>
+              <div class="thumbs" id="thumbs"></div>
+            </label>
+            <label class="f full">Email HTML <span class="hint">Recommended. In the Whizzmailer builder, open the code view, copy everything and paste it here. Alt text, title text and links can only be checked from the HTML.</span>
+              <textarea id="f-html" spellcheck="false" placeholder="&lt;!DOCTYPE html&gt;…"></textarea>
+            </label>
+            <label class="f full">Note for the approver
+              <textarea id="f-note" class="plain" placeholder="Explain anything the checks flag that you are keeping on purpose."></textarea>
+            </label>
+          </div>
+        </fieldset>
+      </form>
+
+      <aside class="rail" aria-label="Self-inspection">
+        <div class="rail-head">
+          <h2>Self-inspection</h2>
+          <div class="meter" id="meter"></div>
+          <div class="counts" id="counts"></div>
+        </div>
+        <div class="rail-body" id="rail"></div>
+        <div class="rail-foot">
+          <ul class="blockers" id="blockers"></ul>
+          <div class="btnrow">
+            <button class="btn" type="button" id="btn-draft">Save draft</button>
+            <button class="btn primary" type="button" id="btn-submit">Submit for approval</button>
+            <button class="btn small" type="button" id="btn-new">Start new</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- QUEUE -->
+  <section id="view-queue" hidden>
+    <h1>EDM tickets</h1>
+    <p class="lede">Every submission gets a ticket number. The bar under each status shows where it is: Submitted, In review, Approved, Scheduled. Open a ticket to see its checks, the reviewer's notes and its history.</p>
+    <div class="toolbar">
+      <input type="search" id="q-search" placeholder="Search ticket, hotel or campaign" style="max-width:280px">
+      <select id="q-status" style="max-width:200px">
+        <option value="">All statuses</option>
+        <option value="pending">Submitted</option>
+        <option value="reviewing">In review</option>
+        <option value="revision">Needs revision</option>
+        <option value="approved">Approved</option>
+        <option value="scheduled">Scheduled</option>
+        <option value="draft">Draft</option>
+      </select>
+    </div>
+    <div class="tablebox"><table>
+      <thead><tr><th>Ticket</th><th>Stage</th><th>Hotel</th><th>Campaign</th><th>Send date</th><th class="num">Checks</th><th>PIC</th><th>Updated</th></tr></thead>
+      <tbody id="q-body"></tbody>
+    </table></div>
+  </section>
+
+  <!-- OVERVIEW -->
+  <section id="view-overview" hidden>
+    <h1>Overview</h1>
+    <p class="lede">Each hotel must send at least one and at most two EDMs per month. Months follow the scheduled start date.</p>
+    <div class="toolbar"><label class="brandchip">Month <input type="month" id="o-month"></label></div>
+    <div class="tiles" id="o-tiles"></div>
+    <div class="tablebox"><table>
+      <thead><tr><th>Hotel</th><th>Brand</th><th class="num">EDMs scheduled</th><th>Monthly rule</th><th class="num">Approved / scheduled</th><th class="num">Waiting</th></tr></thead>
+      <tbody id="o-body"></tbody>
+    </table></div>
+    <details class="sec" id="o-missing-box"><summary id="o-missing-sum"></summary><p id="o-missing" class="code"></p></details>
+  </section>
+
+  <!-- GUIDE -->
+  <section id="view-guide" hidden>
+    <h1>Guidelines reference</h1>
+    <p class="lede">Summary of the EDM Template guideline 2026 used by every check on this page.</p>
+    <div class="guide">
+      <div class="sec"><h3>Mandatory design elements</h3><ul>
+        <li>Background off-white <span class="code">#fffffb</span></li>
+        <li>Fonts Helvetica Neue / Helvetica / Arial (body) and Georgia (titles)</li>
+        <li>Body text dark grey <span class="code">#5f5f5f</span>; titles dark brown <span class="code">#5e4501</span></li>
+        <li>Dividers grey <span class="code">#b4adad</span></li>
+        <li>Buttons, <b>#instantbenefits</b> and <b>Sign up</b> in the hotel's brand color</li>
+        <li>Every image has href, alt text and title text</li></ul></div>
+      <div class="sec"><h3>Six sections</h3><ul>
+        <li><b>Hotel logo</b>: horizontal international logo, alt and title "Hotel Logo", links to the hotel landing page, divider below</li>
+        <li><b>Main offer</b>: HD hero, room package recommended, alt = promotion detail, title = promotion name, button "Book Now", divider below</li>
+        <li><b>Other offers</b>: HD images linked like their button, description up to 160 characters, divider below the last offer</li>
+        <li><b>About SBEC</b>: managed by group; adjust the two colors only, Sign up links to swiss-belhotel.com</li>
+        <li><b>Footer banner</b>: latest banner from Group Marcomm; alt and title = program name</li>
+        <li><b>Footer email</b>: change only social links (reservation email, Facebook, Instagram), address and local phone</li></ul></div>
+      <div class="sec"><h3>Buttons and links</h3><ul>
+        <li>Room package: <b>Book Now</b> → hotel website</li>
+        <li>F&amp;B package: <b>Reserve</b> → reservation contact</li>
+        <li>Social event: <b>Reserve</b> → reservation contact</li>
+        <li>Meeting package: <b>Reserve</b> → reservation contact</li></ul></div>
+      <div class="sec"><h3>Whizzmailer settings</h3><ul>
+        <li>Internal name <span class="code">SBSE - 06 Jun 2026</span></li>
+        <li>UTM campaign name <span class="code">whizz-edm-SBSE-06Jun2026</span></li>
+        <li>Campaign source <span class="code">edm</span>, medium <span class="code">whizzmailer</span>: do not modify</li>
+        <li>Stop sending at most 5 days after the start</li>
+        <li>From name: complete hotel name; reply-to: hotel email</li>
+        <li>Account time zone is Jakarta (GMT+7); allow 20–30 minutes sending delay</li>
+        <li>One to two EDMs per hotel per month; a delivered template cannot be resent</li></ul></div>
+      <div class="sec full" style="grid-column:1/-1"><h3>Brand colors</h3><div class="swatches" id="swatches"></div></div>
+      <div class="sec" id="data-notes" style="grid-column:1/-1"><h3>Hotel list notes for Group Digital Marketing</h3><ul>
+        <li>TSEM and SBKB are in the Marcomm Mandatory Charges list but have no hotel name here, so they cannot be selected yet.</li>
+        <li>SRCP and SBCR are both named "Swiss-Belhotel Cirebon". Please confirm which is correct.</li>
+        <li>SQNA is named "Swiss-Belhotel Napier" although SQ codes are usually Swiss-Belboutique. Treated as Swiss-Belhotel for now.</li>
+        <li>Questions: Santa Rismauli, Group Manager - Digital Marketing, <span class="code">digitalmarketingmgr2@swiss-belhotel.com</span></li></ul></div>
+    </div>
+  </section>
+</main>
+
+<div class="overlay" id="overlay" hidden><div class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Submission detail"></div></div>
+<div class="toast" id="toast" hidden></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
