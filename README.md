@@ -13,6 +13,7 @@ Portal tempat tim hotel SBI mengajukan EDM, memeriksa sendiri (self-inspection) 
 | `index.html`, `app.js` | Tampilan portal: form submit, self-inspection, tickets, overview, guidelines |
 | `api/config.js` | Memberi tahu browser alamat Supabase (hanya nilai yang memang aman untuk publik) |
 | `api/visual-check.js` | Mengirim screenshot ke Claude. Hanya bisa dipanggil oleh user yang sudah login |
+| `api/cleanup.js` | Menghapus tiket dan screenshot yang berumur lebih dari 3 bulan + 1 hari (dijalankan cron harian) |
 | `supabase/schema.sql` | Tabel, aturan keamanan, nomor tiket, dan storage screenshot |
 
 ## Setup pertama kali
@@ -67,6 +68,18 @@ Kalau `ANTHROPIC_API_KEY` belum diisi, portal tetap berjalan dan bagian visual c
 2. Login dengan email reviewer, buka tiket tersebut (status otomatis berubah menjadi *In review*), lalu klik **Send back for revision**.
 3. Login lagi sebagai hotel. Status tiket sekarang *Needs revision*. Klik **Revise and resubmit**: hanya screenshot dan HTML yang bisa diubah.
 4. Login sebagai reviewer, klik **Approve**, lalu **Mark as scheduled**.
+
+## Hapus otomatis data lama
+Setiap hari pukul 02.00 WIB, Vercel menjalankan `api/cleanup.js`. Tiket yang dibuat lebih dari **3 bulan + 1 hari** lalu dihapus, termasuk review dan semua screenshot-nya, supaya database dan storage Supabase (paket gratis) tidak penuh.
+
+Butuh dua Environment Variable tambahan di Vercel:
+
+| Nama | Isi |
+|---|---|
+| `SUPABASE_SECRET_KEY` | **Secret key** dari Supabase → Project Settings → API Keys. Hanya dipakai di server, tidak pernah dikirim ke browser. |
+| `CRON_SECRET` | Teks acak minimal 16 karakter. Vercel memakainya supaya hanya cron yang bisa menjalankan pembersihan. |
+
+Setelah diisi, lakukan **Redeploy**. Hasil setiap pembersihan bisa dilihat di Vercel → project → **Logs** (filter `/api/cleanup`).
 
 ## Aturan yang dijaga oleh database
 - Hotel hanya bisa melihat tiket dan screenshot miliknya sendiri. Reviewer bisa melihat semuanya.

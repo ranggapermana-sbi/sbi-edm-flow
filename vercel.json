@@ -1,5 +1,9 @@
 {
   "functions": {
-    "api/visual-check.js": { "maxDuration": 60 }
-  }
+    "api/visual-check.js": { "maxDuration": 60 },
+    "api/cleanup.js": { "maxDuration": 60 }
+  },
+  "crons": [
+    { "path": "/api/cleanup", "schedule": "0 19 * * *" }
+  ]
 }

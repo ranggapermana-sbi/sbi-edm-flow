@@ -220,8 +220,9 @@ function htmlChecks(doc,win,html,brandHex,probe){
     const wrong=buttons.filter(b=>b.bg!==brand);
     out.push({label:"Buttons in brand color "+brandHex,status:wrong.length?"fail":"pass",detail:wrong.length?wrong.map(b=>`"${b.t}" uses ${b.bg||"no color"}`).join("; "):`${buttons.length} button(s) checked.`});
     const texts=buttons.map(b=>b.t);
-    const bad=texts.filter(t=>!/^(book now|reserve)$/i.test(t));const caps=texts.filter(t=>/^(book now|reserve)$/i.test(t)&&t!=="Book Now"&&t!=="Reserve");
-    out.push({label:"Button text is \"Book Now\" or \"Reserve\"",status:bad.length?"fail":caps.length?"warn":"pass",detail:bad.length?"Not allowed: "+bad.map(t=>`"${t}"`).join(", "):caps.length?"Use title case: "+caps.map(t=>`"${t}"`).join(", "):""});
+    /* the button text must contain "Book Now" or "Reserve" ("Reserve Now", "Book Now Online" are fine) */
+    const bad=[...new Set(texts.filter(t=>!/book\s*now|reserve/i.test(t)))];
+    out.push({label:"Button text has \"Book Now\" or \"Reserve\"",status:bad.length?"warn":"pass",detail:bad.length?"Needs to be fixed: "+bad.map(t=>`"${t}"`).join(", "):`${texts.length} button(s) checked.`});
   }
   // images: plain <img> and MJML <mj-image>
   const nameOfSrc=src=>(src||"").split("/").pop().split("?")[0].slice(0,40)||"image";
