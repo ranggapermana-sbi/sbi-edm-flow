@@ -380,8 +380,15 @@ function shotSig(){return form.files.length?form.files.map(f=>f.name+":"+f.size)
 
 /* ---------- hotel select ---------- */
 const sel=F("f-hotel");const hq=F("f-hotel-q");const hLabel=h=>`${h.name} (${h.code})`;
-HOTELS.forEach(h=>{sel.append(el("option",{value:h.code},hLabel(h)));F("hotel-list").append(el("option",{value:hLabel(h)}));});
-function resolveHotel(text){const t=text.trim();if(!t)return"";const up=t.toUpperCase();if(HOTEL[up])return up;const m=t.match(/\(([A-Z0-9]+)\)\s*$/i);if(m&&HOTEL[m[1].toUpperCase()])return m[1].toUpperCase();const hits=HOTELS.filter(h=>h.name.toLowerCase()===t.toLowerCase());return hits.length===1?hits[0].code:"";}
+/* Hotel teams can only pick the hotels their email is linked to (Access page); reviewers can pick any. */
+let myHotels=[];
+const allowedHotels=()=>isApprover||!session?HOTELS:HOTELS.filter(h=>myHotels.includes(h.code));
+function setHotelChoices(){const list=allowedHotels();
+  sel.replaceChildren(el("option",{value:""},""),...list.map(h=>el("option",{value:h.code},hLabel(h))));
+  F("hotel-list").replaceChildren(...list.map(h=>el("option",{value:hLabel(h)})));
+  hq.placeholder=list.length===1?hLabel(list[0]):list.length?"Type a hotel name or code":"Your email is not linked to a hotel yet";
+  if(list.length===1&&!form.existing&&!form.locked&&!sel.value){sel.value=list[0].code;hq.value=hLabel(list[0]);syncBrandChip&&syncBrandChip();}}
+function resolveHotel(text){const t=text.trim();if(!t)return"";const ok=new Set(allowedHotels().map(h=>h.code));const up=t.toUpperCase();if(HOTEL[up]&&ok.has(up))return up;const m=t.match(/\(([A-Z0-9]+)\)\s*$/i);if(m&&ok.has(m[1].toUpperCase()))return m[1].toUpperCase();const hits=allowedHotels().filter(h=>h.name.toLowerCase()===t.toLowerCase());return hits.length===1?hits[0].code:"";}
 hq.addEventListener("input",()=>{sel.value=resolveHotel(hq.value);});
 hq.addEventListener("change",()=>{const c=resolveHotel(hq.value);sel.value=c;if(c)hq.value=hLabel(HOTEL[c]);});
 function syncBrandChip(){const h=HOTEL[sel.value];const c=$("#brandchip");c.replaceChildren();if(!h)return;const b=BRANDS[h.brand];c.append(el("span",{class:"sw",style:"background:"+b.hex}),`${b.name} · button color ${b.hex}`);}
@@ -445,7 +452,9 @@ function refresh(){
   man.append(mb);rail.append(man);
   // blockers
   const blk=[];
-  if(!h)blk.push("Choose your hotel.");
+  if(session&&!isApprover&&!myHotels.length)blk.push(`Your email ${myEmail} is not linked to a hotel yet. Ask Group Digital Marketing to add you on the Access page.`);
+  else if(!h)blk.push("Choose your hotel.");
+  else if(session&&!isApprover&&!myHotels.includes(h.code)&&!form.existing)blk.push(`Your email is not linked to ${h.name}. Ask Group Digital Marketing for access.`);
   if(!f.pic||!f.picPosition)blk.push("Add the PIC name and position.");
   if(!f.campaign)blk.push("Add the campaign name.");
   const dFix=dl.filter(x=>x.status==="fail"||x.status==="todo").length;if(dFix)blk.push(`${dFix} Whizzmailer setting(s) to fill in or fix.`);
@@ -529,7 +538,7 @@ function signedUrl(path){if(!signedCache.has(path))signedCache.set(path,db.stora
 function storedImg(path,alt){const img=el("img",{alt:alt||"EDM screenshot"});const a=el("a",{target:"_blank",rel:"noopener"},img);if(db)signedUrl(path).then(u=>{if(u){img.src=u;a.href=u;}});return a;}
 
 /* ---------- save / submit ---------- */
-function canEditSub(id){if(!id)return true;const s=subs.get(id);if(!s)return true;const st=statusOf(id);return s.owner===myId&&(st==="draft"||st==="revision");}
+function canEditSub(id){if(!id)return true;const s=subs.get(id);if(!s)return true;const st=statusOf(id);return(s.owner===myId||myHotels.includes(s.hotelCode))&&(st==="draft"||st==="revision");}
 async function save(submit){
   if(!db||!session){toast("Sign in to save submissions.");return;}
   const f=readForm();const btns=[F("btn-draft"),F("btn-submit")];btns.forEach(b=>b.disabled=true);
@@ -693,9 +702,9 @@ const monthCountCache=new Map(),monthCountFresh=new Set(); /* values stay on scr
 function monthCount(code,ym){const k=code+"|"+ym;if(monthCountFresh.has(k))return monthCountCache.get(k);monthCountFresh.add(k);
   if(db)db.rpc("month_count",{p_hotel:code,p_month:ym,p_exclude:null}).then(({data,error})=>{if(error){monthCountFresh.delete(k);return;}monthCountCache.set(k,data||0);if(!F("view-overview").hidden)renderOverview();});return undefined;}
 function renderHotelRule(ym){
-  const codes=[...new Set([...subs.values()].map(s=>s.hotelCode).filter(Boolean))].sort();
+  const codes=[...new Set([...myHotels,...[...subs.values()].map(s=>s.hotelCode)].filter(Boolean))].sort();
   const box=F("o-rule");box.hidden=false;
-  if(!codes.length){box.replaceChildren(el("div",{class:"rule"},el("span",{class:"pill s-fail"},"No EDM yet"),el("span",{class:"msg"},"Submit your first EDM to see your hotel's monthly status.")));return;}
+  if(!codes.length){box.replaceChildren(el("div",{class:"rule"},el("span",{class:"pill s-fail"},"No EDM yet"),el("span",{class:"msg"},"Your email is not linked to a hotel yet. Ask Group Digital Marketing to add you on the Access page.")));return;}
   const label=new Date(ym+"-01T00:00:00").toLocaleDateString("en-GB",{month:"long",year:"numeric"});
   box.replaceChildren(...codes.map(c=>{const h=HOTEL[c];const n=monthCount(c,ym);
     const[cls,tag,msg]=n===undefined?["s-info","Checking…",""]
@@ -726,14 +735,59 @@ function renderOverview(){
   F("o-missing").textContent=missing.map(h=>h.code).join(" · ");
 }
 
+/* ---------- access (reviewers): which email can submit for which hotel ---------- */
+async function loadMyHotels(){if(!db||!session){myHotels=[];return;}
+  const{data,error}=await db.from("hotel_members").select("hotel_code").eq("email",myEmail.toLowerCase());
+  myHotels=error?[]:[...new Set((data||[]).map(r=>r.hotel_code))];setHotelChoices();refresh();}
+let accessRows=[],unlinked=[],newHotels=[],accessLoaded=false;
+const ax={email:F("a-email"),hq:F("a-hotel-q"),chips:F("a-chips"),add:F("a-add"),msg:F("a-msg"),q:F("a-search")};
+HOTELS.forEach(h=>F("a-hotel-list").append(el("option",{value:hLabel(h)})));
+function hotelFromText(t){t=(t||"").trim();if(!t)return"";const up=t.toUpperCase();if(HOTEL[up])return up;const m=t.match(/\(([A-Z0-9]+)\)\s*$/i);if(m&&HOTEL[m[1].toUpperCase()])return m[1].toUpperCase();const hits=HOTELS.filter(h=>h.name.toLowerCase()===t.toLowerCase());return hits.length===1?hits[0].code:"";}
+function addHotelChip(){const c=hotelFromText(ax.hq.value);if(!c){ax.msg.textContent="Pick a hotel from the list.";return;}if(!newHotels.includes(c))newHotels.push(c);ax.hq.value="";ax.msg.textContent="";drawChips();}
+function drawChips(){ax.chips.replaceChildren(...newHotels.map(c=>el("span",{class:"chip"},`${HOTEL[c].name} (${c})`,el("button",{type:"button","aria-label":"Remove "+c,onclick:()=>{newHotels=newHotels.filter(x=>x!==c);drawChips();}},"×"))));}
+ax.hq.addEventListener("change",addHotelChip);
+ax.hq.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();addHotelChip();}});
+F("a-form").addEventListener("submit",async e=>{e.preventDefault();
+  const email=ax.email.value.trim().toLowerCase();if(ax.hq.value.trim())addHotelChip();
+  if(!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)){ax.msg.textContent="Enter a valid email address.";return;}
+  if(!newHotels.length){ax.msg.textContent="Add at least one hotel.";return;}
+  ax.add.disabled=true;const rows=newHotels.map(c=>({email,hotel_code:c,added_by:myEmail}));
+  const{error}=await db.from("hotel_members").upsert(rows,{onConflict:"email,hotel_code",ignoreDuplicates:true});ax.add.disabled=false;
+  if(error){ax.msg.textContent="Could not save: "+error.message;return;}
+  toast(`${email} can now submit for ${newHotels.length} hotel(s).`);ax.email.value="";newHotels=[];drawChips();ax.msg.textContent="";
+  if(email===myEmail.toLowerCase())loadMyHotels();renderAccess(true);});
+ax.q.addEventListener("input",()=>renderAccess(false));
+async function removeAccess(email,code){let q=db.from("hotel_members").delete().eq("email",email);if(code)q=q.eq("hotel_code",code);
+  const{error}=await q;if(error){toast("Could not remove: "+error.message);return;}toast(code?`Removed ${code} from ${email}.`:`Removed all hotels from ${email}.`);renderAccess(true);}
+function confirmButton(label,onConfirm){const b=el("button",{type:"button",class:"btn small"},label);let armed=false,t;
+  b.addEventListener("click",()=>{if(armed){clearTimeout(t);onConfirm();return;}armed=true;b.textContent="Click again to confirm";b.classList.add("danger");t=setTimeout(()=>{armed=false;b.textContent=label;b.classList.remove("danger");},4000);});return b;}
+async function renderAccess(reload){if(!isApprover)return;
+  if(reload||!accessLoaded){const[a,u]=await Promise.all([db.from("hotel_members").select("email,hotel_code,added_by,added_at").order("email"),db.rpc("unlinked_users")]);
+    accessRows=a.error?[]:(a.data||[]);unlinked=u.error?[]:(u.data||[]);accessLoaded=true;}
+  // waiting list
+  F("a-wait-box").hidden=!unlinked.length;
+  F("a-wait").replaceChildren(...unlinked.map(u=>el("li",null,el("span",{class:"code"},u.email),el("span",{style:"color:var(--muted);font-size:12px"},u.last_sign_in_at?" · last sign-in "+fmtWhen(u.last_sign_in_at):""),
+    " ",el("button",{type:"button",class:"btn small",onclick:()=>{ax.email.value=u.email;ax.hq.focus();window.scrollTo({top:F("a-form").offsetTop-80,behavior:"smooth"});}},"Link to hotel"))));
+  // table grouped by email
+  const q=ax.q.value.trim().toLowerCase();const by=new Map();
+  accessRows.forEach(r=>{if(!by.has(r.email))by.set(r.email,[]);by.get(r.email).push(r);});
+  const groups=[...by.entries()].filter(([em,rs])=>!q||em.includes(q)||rs.some(r=>r.hotel_code.toLowerCase().includes(q)||((HOTEL[r.hotel_code]||{}).name||"").toLowerCase().includes(q)));
+  F("a-count").textContent=`${by.size} email(s) · ${new Set(accessRows.map(r=>r.hotel_code)).size} hotel(s) covered`;
+  F("a-body").replaceChildren(...(groups.length?groups.map(([em,rs])=>el("tr",null,
+    el("td",null,el("div",{class:"code"},em),rs.length>1?el("div",{style:"font-size:12px;color:var(--muted)"},`Cluster · ${rs.length} hotels`):null),
+    el("td",null,el("div",{class:"chips"},rs.map(r=>el("span",{class:"chip",title:`Added ${r.added_at?fmtWhen(r.added_at):""}${r.added_by?" by "+r.added_by:""}`},HOTEL[r.hotel_code]?`${HOTEL[r.hotel_code].name} (${r.hotel_code})`:r.hotel_code,
+      el("button",{type:"button","aria-label":`Remove ${r.hotel_code} from ${em}`,onclick:()=>removeAccess(em,r.hotel_code)},"×"))))),
+    el("td",{style:"white-space:nowrap"},el("button",{type:"button",class:"btn small",onclick:()=>{ax.email.value=em;ax.hq.focus();window.scrollTo({top:F("a-form").offsetTop-80,behavior:"smooth"});}},"Add hotel")," ",confirmButton("Remove all",()=>removeAccess(em,null)))))
+    :[el("tr",null,el("td",{colspan:"3",class:"empty"},accessRows.length?"No match.":"No one is linked to a hotel yet. Add the first email above."))]));}
+
 /* ---------- guide ---------- */
 F("swatches").append(...Object.values(BRANDS).map(b=>el("div",null,el("span",{class:"sw",style:"background:"+b.hex}),b.name,el("span",{class:"code",style:"color:var(--muted)"},b.hex))));
 
 /* ---------- views ---------- */
 /* Each tab has its own address: /submit, /tickets, /overview, /guidelines.
    A single ticket opens at /tickets/<ticket number>. Old #hash links still work. */
-const PATHS={submit:"/submit",queue:"/tickets",overview:"/overview",guide:"/guidelines"};
-const VIEW_OF={"submit":"submit","tickets":"queue","overview":"overview","guidelines":"guide","queue":"queue","guide":"guide"};
+const PATHS={submit:"/submit",queue:"/tickets",overview:"/overview",guide:"/guidelines",access:"/access"};
+const VIEW_OF={"submit":"submit","tickets":"queue","overview":"overview","guidelines":"guide","queue":"queue","guide":"guide","access":"access"};
 function setPath(path,replace){if(location.pathname===path)return;try{history[replace?"replaceState":"pushState"]({},"",path);}catch(e){}}
 function ticketPath(id){const s=subs.get(id);return "/tickets/"+encodeURIComponent((s&&s.ticket)||id);}
 function parsePath(){const seg=location.pathname.replace(/^\/+|\/+$/g,"").split("/");const hash=(location.hash||"").slice(1);
@@ -745,8 +799,8 @@ function openPendingTicket(){if(!pendingTicket||!session)return;const id=idForTi
 function routeFromAddress(){const r=parsePath();switchView(r.view,{fromAddress:true});
   if(r.ticket){pendingTicket=r.ticket;openPendingTicket();}else if(openId){openId=null;$("#overlay").hidden=true;}}
 window.addEventListener("popstate",routeFromAddress);
-function switchView(v,opts){opts=opts||{};currentView=v;
-  if(session&&!opts.fromAddress)setPath(PATHS[v]);else if(session&&location.pathname!==PATHS[v]&&!/^\/tickets\/./.test(location.pathname))setPath(PATHS[v],true);document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.view===v?"true":"false"));["submit","queue","overview","guide"].forEach(k=>F("view-"+k).hidden=k!==v);if(v==="queue")renderQueue();if(v==="overview")renderOverview();window.scrollTo(0,0);}
+function switchView(v,opts){opts=opts||{};if(v==="access"&&session&&!isApprover)v="queue";currentView=v;
+  if(session&&!opts.fromAddress)setPath(PATHS[v]);else if(session&&location.pathname!==PATHS[v]&&!/^\/tickets\/./.test(location.pathname))setPath(PATHS[v],true);document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.view===v?"true":"false"));["submit","queue","overview","guide","access"].forEach(k=>F("view-"+k).hidden=k!==v);if(v==="queue")renderQueue();if(v==="overview")renderOverview();if(v==="access")renderAccess(true);window.scrollTo(0,0);}
 document.querySelectorAll("nav.tabs button").forEach(b=>b.addEventListener("click",()=>switchView(b.dataset.view)));
 {const r=parsePath();currentView=r.view;pendingTicket=r.ticket;}
 
@@ -756,7 +810,7 @@ refresh();renderQueue();
 /* ---------- sign in (magic link) ---------- */
 function setSignedIn(on){
   F("view-login").hidden=on;document.querySelector("nav.tabs").hidden=!on;
-  if(on)switchView(currentView||"submit",{fromAddress:true});else{["submit","queue","overview","guide"].forEach(k=>F("view-"+k).hidden=true);closeDetail();}
+  if(on)switchView(currentView||"submit",{fromAddress:true});else{["submit","queue","overview","guide","access"].forEach(k=>F("view-"+k).hidden=true);closeDetail();}
 }
 function renderWho(){const w=$("#who");w.replaceChildren();
   if(!session){w.textContent=db?"Signed out":"";return;}
@@ -773,10 +827,12 @@ F("login-form").addEventListener("submit",async e=>{e.preventDefault();if(!db)re
 let lastUser;
 async function onSession(s){
   session=s;const uid=s?s.user.id:null;if(uid===lastUser){renderWho();return;}lastUser=uid;
-  if(!s){myId=null;myEmail="";isApprover=false;subs=new Map();decisions=new Map();fullCache.clear();renderWho();setSignedIn(false);return;}
+  if(!s){myId=null;myEmail="";isApprover=false;myHotels=[];subs=new Map();decisions=new Map();fullCache.clear();renderWho();setSignedIn(false);return;}
   myId=s.user.id;myEmail=s.user.email||"";
   const{data:rv}=await db.rpc("is_reviewer");isApprover=!!rv;
   F("tab-overview").hidden=false; /* hotels see a version limited to their own hotel */
+  F("tab-access").hidden=!isApprover;if(!isApprover&&currentView==="access")currentView="queue";
+  await loadMyHotels();
   renderWho();setSignedIn(true);await loadData();refresh();openPendingTicket();
 }
 (async function init(){

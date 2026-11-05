@@ -28,6 +28,48 @@ as $$
 $$;
 
 -- ============================================================
+-- 1b. Hotel access (managed by reviewers on the portal's Access page)
+--     One row per email and hotel. A PIC who handles a cluster has one
+--     row per hotel. Everyone linked to a hotel sees and can revise all
+--     of that hotel's tickets, and can only submit for linked hotels.
+-- ============================================================
+create table if not exists public.hotel_members (
+  email      text not null check (email = lower(email) and email like '%@%'),
+  hotel_code text not null check (hotel_code ~ '^[A-Z0-9]{2,10}$'),
+  added_by   text,
+  added_at   timestamptz not null default now(),
+  primary key (email, hotel_code)
+);
+create index if not exists hotel_members_hotel_idx on public.hotel_members (hotel_code);
+alter table public.hotel_members enable row level security;
+
+create or replace function public.is_member(p_hotel text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.hotel_members
+    where email = lower(coalesce(auth.jwt() ->> 'email', '')) and hotel_code = p_hotel
+  );
+$$;
+
+drop policy if exists "hotel_members: read own or as reviewer" on public.hotel_members;
+create policy "hotel_members: read own or as reviewer" on public.hotel_members
+  for select to authenticated
+  using (email = lower(coalesce(auth.jwt() ->> 'email', '')) or public.is_reviewer());
+drop policy if exists "hotel_members: reviewers add" on public.hotel_members;
+create policy "hotel_members: reviewers add" on public.hotel_members
+  for insert to authenticated
+  with check (public.is_reviewer());
+drop policy if exists "hotel_members: reviewers remove" on public.hotel_members;
+create policy "hotel_members: reviewers remove" on public.hotel_members
+  for delete to authenticated
+  using (public.is_reviewer());
+
+-- ============================================================
 -- 2. Tickets
 --    One row per EDM submission. Scalar columns are used for security
 --    rules and counting; `summary` feeds the ticket list and `data`
@@ -79,7 +121,7 @@ as $$
     select 1 from public.tickets t
     left join public.reviews r on r.ticket_id = t.id
     where t.id = p_id
-      and t.owner = auth.uid()
+      and (t.owner = auth.uid() or public.is_member(t.hotel_code))
       and (
         t.state = 'draft'
         or (r.status = 'revision' and r.at >= coalesce(t.submitted_at, ''))
@@ -89,20 +131,21 @@ $$;
 
 -- ---------- tickets policies ----------
 drop policy if exists "tickets: read own or as reviewer" on public.tickets;
-create policy "tickets: read own or as reviewer" on public.tickets
+drop policy if exists "tickets: read own hotel or as reviewer" on public.tickets;
+create policy "tickets: read own hotel or as reviewer" on public.tickets
   for select to authenticated
-  using (owner = auth.uid() or public.is_reviewer());
+  using (owner = auth.uid() or public.is_member(hotel_code) or public.is_reviewer());
 
 drop policy if exists "tickets: hotel creates own" on public.tickets;
 create policy "tickets: hotel creates own" on public.tickets
   for insert to authenticated
-  with check (owner = auth.uid() and ticket is null);
+  with check (owner = auth.uid() and ticket is null and (public.is_member(hotel_code) or public.is_reviewer()));
 
 drop policy if exists "tickets: hotel edits own while editable" on public.tickets;
 create policy "tickets: hotel edits own while editable" on public.tickets
   for update to authenticated
   using (public.can_edit_ticket(id))
-  with check (owner = auth.uid());
+  with check (public.is_member(hotel_code) or owner = auth.uid());
 
 -- Owner email is always taken from the login; ticket numbers can only be
 -- set by assign_ticket(); the owner can never change.
@@ -119,6 +162,9 @@ begin
   else
     new.owner := old.owner;
     new.owner_email := old.owner_email;
+    if old.ticket is not null then
+      new.hotel_code := old.hotel_code;
+    end if;
     if coalesce(current_setting('edm.assigning', true), '') <> '1' then
       new.ticket := old.ticket;
     end if;
@@ -136,7 +182,8 @@ create trigger tickets_guard
 drop policy if exists "reviews: read own tickets or as reviewer" on public.reviews;
 create policy "reviews: read own tickets or as reviewer" on public.reviews
   for select to authenticated
-  using (owner = auth.uid() or public.is_reviewer());
+  using (owner = auth.uid() or public.is_reviewer()
+         or exists (select 1 from public.tickets t where t.id = ticket_id and public.is_member(t.hotel_code)));
 
 drop policy if exists "reviews: reviewers insert" on public.reviews;
 create policy "reviews: reviewers insert" on public.reviews
@@ -185,7 +232,7 @@ declare
   next_no integer;
   result text;
 begin
-  select * into t from public.tickets where id = p_id and owner = auth.uid();
+  select * into t from public.tickets where id = p_id and (owner = auth.uid() or public.is_member(hotel_code));
   if not found then
     raise exception 'ticket not found';
   end if;
@@ -220,6 +267,8 @@ grant execute on function public.is_reviewer() to authenticated;
 grant execute on function public.can_edit_ticket(text) to authenticated;
 grant execute on function public.month_count(text, text, text) to authenticated;
 grant execute on function public.assign_ticket(text) to authenticated;
+revoke all on function public.is_member(text) from public, anon;
+grant execute on function public.is_member(text) to authenticated;
 
 -- Table access for the API. Written out explicitly so the schema works whether
 -- or not "Automatically expose new tables" is on. RLS above still decides rows.
@@ -227,6 +276,8 @@ revoke all on public.reviewers, public.tickets, public.reviews from anon;
 revoke all on public.reviewers from authenticated;
 grant select, insert, update on public.tickets to authenticated;
 grant select, insert, update on public.reviews to authenticated;
+revoke all on public.hotel_members from anon;
+grant select, insert, delete on public.hotel_members to authenticated;
 -- the daily cleanup (api/cleanup.js) runs as service_role with the secret key
 grant select, delete on public.tickets, public.reviews to service_role;
 
@@ -250,8 +301,56 @@ create policy "screenshots: read own or as reviewer" on storage.objects
   for select to authenticated
   using (
     bucket_id = 'screenshots'
-    and ((storage.foldername(name))[1] = auth.uid()::text or public.is_reviewer())
+    and ((storage.foldername(name))[1] = auth.uid()::text or public.is_reviewer()
+         or exists (select 1 from public.tickets t
+                    where t.id = (storage.foldername(name))[2] and public.is_member(t.hotel_code)))
   );
+
+-- ============================================================
+-- 5b. Helpers for the Access page and the daily cleanup
+-- ============================================================
+
+-- People who have signed in but are not reviewers and not linked to any hotel
+-- (shown to reviewers on the Access page so they can be linked).
+create or replace function public.unlinked_users()
+returns table (email text, last_sign_in_at timestamptz)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select lower(u.email), u.last_sign_in_at
+  from auth.users u
+  where public.is_reviewer()
+    and u.email is not null
+    and not exists (select 1 from public.reviewers r where lower(r.email) = lower(u.email))
+    and not exists (select 1 from public.hotel_members m where m.email = lower(u.email))
+  order by u.last_sign_in_at desc nulls last
+  limit 200;
+$$;
+revoke all on function public.unlinked_users() from public, anon;
+grant execute on function public.unlinked_users() to authenticated;
+
+-- Every screenshot of the given tickets, whoever uploaded it (used by api/cleanup.js).
+create or replace function public.ticket_files(p_ids text[])
+returns table (name text)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select o.name from storage.objects o
+  where o.bucket_id = 'screenshots' and (storage.foldername(o.name))[2] = any (p_ids);
+$$;
+revoke all on function public.ticket_files(text[]) from public, anon, authenticated;
+grant execute on function public.ticket_files(text[]) to service_role;
+
+-- Keep access for people who already submitted before hotel access existed.
+insert into public.hotel_members (email, hotel_code, added_by)
+select distinct lower(t.owner_email), t.hotel_code, 'auto: existing ticket'
+from public.tickets t
+where t.owner_email is not null and t.hotel_code ~ '^[A-Z0-9]{2,10}$'
+on conflict do nothing;
 
 -- ============================================================
 -- 6. Add the Group Digital Marketing reviewers

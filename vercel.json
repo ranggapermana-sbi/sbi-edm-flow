@@ -15,7 +15,7 @@
   ],
   "rewrites": [
     {
-      "source": "/(submit|tickets|overview|guidelines)",
+      "source": "/(submit|tickets|overview|guidelines|access)",
       "destination": "/index.html"
     },
     {

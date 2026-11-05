@@ -81,8 +81,14 @@ Butuh dua Environment Variable tambahan di Vercel:
 
 Setelah diisi, lakukan **Redeploy**. Hasil setiap pembersihan bisa dilihat di Vercel → project → **Logs** (filter `/api/cleanup`).
 
+## Akses hotel (halaman Access)
+Reviewer mengatur email mana yang boleh submit untuk hotel mana di menu **Access** (`/access`, hanya terlihat oleh reviewer).
+- Satu email bisa dihubungkan ke satu hotel, atau beberapa hotel untuk PIC cluster.
+- Email yang terhubung ke sebuah hotel bisa melihat dan merevisi **semua tiket hotel itu**, siapa pun pembuatnya, dan hanya bisa submit untuk hotel yang terhubung.
+- Orang yang sudah login tetapi belum terhubung ke hotel muncul di bagian *Signed in, waiting for access*.
+
 ## Aturan yang dijaga oleh database
-- Hotel hanya bisa melihat tiket dan screenshot miliknya sendiri. Reviewer bisa melihat semuanya.
+- Hotel hanya bisa melihat tiket dan screenshot hotel yang terhubung dengan emailnya. Reviewer bisa melihat semuanya.
 - Hotel hanya bisa mengubah tiket saat statusnya draft, atau setelah dikembalikan untuk revisi.
 - Hanya reviewer yang bisa menulis keputusan (In review, Approved, Needs revision, Scheduled).
 - Nomor tiket (`EDM-<KODE HOTEL>-<YYMM>-<NN>`) diberikan oleh database dan tidak bisa diubah.

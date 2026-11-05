@@ -42,27 +42,20 @@ export default async function handler(req, res) {
     const old = await call(
       `/rest/v1/tickets?select=id,owner&created_at=lt.${encodeURIComponent(cutoff)}&order=created_at.asc&limit=${BATCH}`
     );
+    const ids = (old || []).map((t) => t.id);
     const done = [];
-    for (const t of old || []) {
-      try {
-        const prefix = `${t.owner}/${t.id}`;
-        const files = await call(`/storage/v1/object/list/${BUCKET}`, {
-          method: "POST",
-          body: JSON.stringify({ prefix, limit: 1000, offset: 0 }),
+    if (ids.length) {
+      // every screenshot of these tickets, also those uploaded by other PICs of the hotel
+      const files = await call(`/rest/v1/rpc/ticket_files`, { method: "POST", body: JSON.stringify({ p_ids: ids }) });
+      const paths = (files || []).map((f) => f.name).filter(Boolean);
+      for (let i = 0; i < paths.length; i += BATCH) {
+        await call(`/storage/v1/object/${BUCKET}`, {
+          method: "DELETE",
+          body: JSON.stringify({ prefixes: paths.slice(i, i + BATCH) }),
         });
-        const paths = (files || []).filter((f) => f && f.name && f.id).map((f) => `${prefix}/${f.name}`);
-        for (let i = 0; i < paths.length; i += BATCH) {
-          await call(`/storage/v1/object/${BUCKET}`, {
-            method: "DELETE",
-            body: JSON.stringify({ prefixes: paths.slice(i, i + BATCH) }),
-          });
-        }
-        result.files += paths.length;
-        done.push(t.id);
-      } catch (e) {
-        // keep the ticket so its screenshots are tried again tomorrow
-        result.errors.push(`${t.id}: ${e.message}`);
       }
+      result.files = paths.length;
+      done.push(...ids); // files are gone (or there were none), so the rows can go too
     }
     if (done.length) {
       const list = done.map((id) => `"${id}"`).join(",");

@@ -109,6 +109,15 @@ tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--soft)}
 .o-rule .rule{display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px}
 .o-rule .rule b{font-weight:600}
 .o-rule .rule .msg{color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{display:inline-flex;align-items:center;gap:4px;background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 4px 3px 10px;font-size:12.5px}
+.chip button{border:0;background:none;color:var(--muted);cursor:pointer;font-size:15px;line-height:1;padding:0 6px;border-radius:999px}
+.chip button:hover,.chip button:focus-visible{color:var(--bad);background:var(--bad-bg)}
+.access-add .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:640px){.access-add .row{grid-template-columns:1fr}}
+.a-wait{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+.a-wait li{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.btn.danger{border-color:var(--bad);color:var(--bad)}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px}
 .tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
 .tile b{display:block;font-size:28px;font-variant-numeric:tabular-nums;line-height:1.2}
@@ -166,6 +175,7 @@ tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--soft)}
       <button role="tab" id="tab-queue" aria-selected="false" data-view="queue">Tickets</button>
       <button role="tab" id="tab-overview" aria-selected="false" data-view="overview">Overview</button>
       <button role="tab" id="tab-guide" aria-selected="false" data-view="guide">Guidelines</button>
+      <button role="tab" id="tab-access" aria-selected="false" data-view="access" hidden>Access</button>
     </nav>
     <div class="who" id="who">Connecting…</div>
   </div>
@@ -348,6 +358,37 @@ tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--soft)}
   </section>
 
   <!-- GUIDE -->
+  <!-- ACCESS (reviewers only) -->
+  <section id="view-access" hidden>
+    <h1>Access</h1>
+    <p class="lede">Link each hotel PIC's email to the hotel(s) they handle. Linked people can submit EDMs only for those hotels, and see and revise every ticket of those hotels, whoever created it. For a PIC who handles a cluster, add all their hotels.</p>
+    <form class="sec access-add" id="a-form" autocomplete="off">
+      <h3>Give access</h3>
+      <div class="row">
+        <label class="f">Email
+          <input type="email" id="a-email" placeholder="name@swiss-belhotel.com" required>
+        </label>
+        <label class="f">Hotel(s)
+          <input type="text" id="a-hotel-q" list="a-hotel-list" placeholder="Type a hotel name or code, then Enter">
+          <datalist id="a-hotel-list"></datalist>
+        </label>
+      </div>
+      <div class="chips" id="a-chips"></div>
+      <div class="btnrow" style="margin-top:10px"><button type="submit" class="btn primary" id="a-add">Give access</button><span id="a-msg" class="d" style="color:var(--bad)"></span></div>
+    </form>
+    <div class="sec" id="a-wait-box" hidden>
+      <h3>Signed in, waiting for access</h3>
+      <p style="margin:0 0 8px;font-size:13px;color:var(--muted)">These people signed in but are not linked to any hotel yet, so they cannot submit.</p>
+      <ul class="a-wait" id="a-wait"></ul>
+    </div>
+    <div class="toolbar" style="margin-top:20px"><input type="search" id="a-search" placeholder="Search email, hotel or code" style="max-width:320px"><span id="a-count" style="color:var(--muted);font-size:13px"></span></div>
+    <div class="tablebox"><table>
+      <thead><tr><th>Email</th><th>Hotels</th><th></th></tr></thead>
+      <tbody id="a-body"></tbody>
+    </table></div>
+    <p style="font-size:12px;color:var(--muted);margin-top:10px">Reviewers (Group Digital Marketing) see every hotel and are managed in Supabase, table <code>reviewers</code>.</p>
+  </section>
+
   <section id="view-guide" hidden>
     <h1>Guidelines reference</h1>
     <p class="lede">Summary of the EDM Template guideline 2026 used by every check on this page.</p>
