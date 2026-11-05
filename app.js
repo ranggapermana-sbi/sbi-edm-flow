@@ -739,7 +739,7 @@ function renderOverview(){
 async function loadMyHotels(){if(!db||!session){myHotels=[];return;}
   const{data,error}=await db.from("hotel_members").select("hotel_code").eq("email",myEmail.toLowerCase());
   myHotels=error?[]:[...new Set((data||[]).map(r=>r.hotel_code))];setHotelChoices();refresh();}
-let accessRows=[],unlinked=[],newHotels=[],accessLoaded=false;
+let isAdmin=false;let accessRows=[],unlinked=[],reviewerRows=[],newHotels=[],accessLoaded=false;
 const ax={email:F("a-email"),hq:F("a-hotel-q"),chips:F("a-chips"),add:F("a-add"),msg:F("a-msg"),q:F("a-search")};
 HOTELS.forEach(h=>F("a-hotel-list").append(el("option",{value:hLabel(h)})));
 function hotelFromText(t){t=(t||"").trim();if(!t)return"";const up=t.toUpperCase();if(HOTEL[up])return up;const m=t.match(/\(([A-Z0-9]+)\)\s*$/i);if(m&&HOTEL[m[1].toUpperCase()])return m[1].toUpperCase();const hits=HOTELS.filter(h=>h.name.toLowerCase()===t.toLowerCase());return hits.length===1?hits[0].code:"";}
@@ -762,8 +762,9 @@ async function removeAccess(email,code){let q=db.from("hotel_members").delete().
 function confirmButton(label,onConfirm){const b=el("button",{type:"button",class:"btn small"},label);let armed=false,t;
   b.addEventListener("click",()=>{if(armed){clearTimeout(t);onConfirm();return;}armed=true;b.textContent="Click again to confirm";b.classList.add("danger");t=setTimeout(()=>{armed=false;b.textContent=label;b.classList.remove("danger");},4000);});return b;}
 async function renderAccess(reload){if(!isApprover)return;
-  if(reload||!accessLoaded){const[a,u]=await Promise.all([db.from("hotel_members").select("email,hotel_code,added_by,added_at").order("email"),db.rpc("unlinked_users")]);
-    accessRows=a.error?[]:(a.data||[]);unlinked=u.error?[]:(u.data||[]);accessLoaded=true;}
+  if(reload||!accessLoaded){const[a,u,r]=await Promise.all([db.from("hotel_members").select("email,hotel_code,added_by,added_at").order("email"),db.rpc("unlinked_users"),db.from("reviewers").select("email,role,added_by,added_at").order("email")]);
+    accessRows=a.error?[]:(a.data||[]);unlinked=u.error?[]:(u.data||[]);reviewerRows=r.error?[]:(r.data||[]);accessLoaded=true;}
+  renderReviewers();
   // waiting list
   F("a-wait-box").hidden=!unlinked.length;
   F("a-wait").replaceChildren(...unlinked.map(u=>el("li",null,el("span",{class:"code"},u.email),el("span",{style:"color:var(--muted);font-size:12px"},u.last_sign_in_at?" · last sign-in "+fmtWhen(u.last_sign_in_at):""),
@@ -779,6 +780,34 @@ async function renderAccess(reload){if(!isApprover)return;
       el("button",{type:"button","aria-label":`Remove ${r.hotel_code} from ${em}`,onclick:()=>removeAccess(em,r.hotel_code)},"×"))))),
     el("td",{style:"white-space:nowrap"},el("button",{type:"button",class:"btn small",onclick:()=>{ax.email.value=em;ax.hq.focus();window.scrollTo({top:F("a-form").offsetTop-80,behavior:"smooth"});}},"Add hotel")," ",confirmButton("Remove all",()=>removeAccess(em,null)))))
     :[el("tr",null,el("td",{colspan:"3",class:"empty"},accessRows.length?"No match.":"No one is linked to a hotel yet. Add the first email above."))]));}
+
+/* Reviewers: everyone with reviewer rights can see the list; only super admins change it. */
+F("r-form").addEventListener("submit",async e=>{e.preventDefault();if(!isAdmin)return;
+  const email=F("r-email").value.trim().toLowerCase();const role=F("r-role").value;const msg=F("r-msg");
+  if(!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)){msg.textContent="Enter a valid email address.";return;}
+  if(reviewerRows.some(r=>r.email.toLowerCase()===email)){msg.textContent="This email is already a reviewer. Change its role in the list below.";return;}
+  F("r-add").disabled=true;const{error}=await db.from("reviewers").insert({email,role,added_by:myEmail});F("r-add").disabled=false;
+  if(error){msg.textContent="Could not save: "+error.message;return;}
+  msg.textContent="";F("r-email").value="";F("r-role").value="reviewer";toast(`${email} is now a ${role==="admin"?"super admin":"reviewer"}. They see it after refreshing the portal.`);renderAccess(true);});
+async function setReviewerRole(email,role){const{error}=await db.from("reviewers").update({role}).eq("email",email);
+  if(error){toast(/super admin must remain/i.test(error.message)?"At least one super admin must remain.":"Could not change: "+error.message);renderAccess(true);return;}
+  toast(`${email} is now a ${role==="admin"?"super admin":"reviewer"}.`);if(email.toLowerCase()===myEmail.toLowerCase()){isAdmin=role==="admin";renderWho();}renderAccess(true);}
+async function removeReviewer(email){const{error}=await db.from("reviewers").delete().eq("email",email);
+  if(error){toast(/super admin must remain/i.test(error.message)?"At least one super admin must remain.":"Could not remove: "+error.message);return;}
+  toast(`${email} is no longer a reviewer.`);renderAccess(true);}
+function renderReviewers(){F("r-form").hidden=!isAdmin;
+  F("r-lede").textContent=isAdmin?"Reviewers (Group Digital Marketing) see every hotel, approve EDMs and give hotel access. As a super admin you can also add or remove reviewers.":"Reviewers (Group Digital Marketing) see every hotel, approve EDMs and give hotel access. Only a super admin can add or remove reviewers.";
+  const admins=reviewerRows.filter(r=>r.role==="admin").length;
+  F("r-body").replaceChildren(...(reviewerRows.length?reviewerRows.map(r=>{const me=r.email.toLowerCase()===myEmail.toLowerCase();const lastAdmin=r.role==="admin"&&admins<=1;
+    let roleCell;
+    if(isAdmin){const sel=el("select",{"aria-label":"Role of "+r.email,disabled:lastAdmin?true:null,title:lastAdmin?"At least one super admin must remain":null},el("option",{value:"reviewer"},"Reviewer"),el("option",{value:"admin"},"Super admin"));sel.value=r.role;
+      sel.addEventListener("change",()=>setReviewerRole(r.email,sel.value));roleCell=sel;}
+    else roleCell=el("span",{class:"pill "+(r.role==="admin"?"s-info":"s-pass")},r.role==="admin"?"Super admin":"Reviewer");
+    return el("tr",null,el("td",null,el("div",{class:"code"},r.email),me?el("div",{style:"font-size:12px;color:var(--muted)"},"You"):null),
+      el("td",{style:"min-width:150px"},roleCell),
+      el("td",{style:"font-size:12px;color:var(--muted)"},r.added_at?fmtWhen(r.added_at):"—",r.added_by?el("div",null,"by "+r.added_by):null),
+      el("td",{style:"white-space:nowrap"},isAdmin&&!lastAdmin?confirmButton("Remove",()=>removeReviewer(r.email)):null));})
+    :[el("tr",null,el("td",{colspan:"4",class:"empty"},"No reviewers yet."))]));}
 
 /* ---------- guide ---------- */
 F("swatches").append(...Object.values(BRANDS).map(b=>el("div",null,el("span",{class:"sw",style:"background:"+b.hex}),b.name,el("span",{class:"code",style:"color:var(--muted)"},b.hex))));
@@ -814,7 +843,7 @@ function setSignedIn(on){
 }
 function renderWho(){const w=$("#who");w.replaceChildren();
   if(!session){w.textContent=db?"Signed out":"";return;}
-  w.append(el("span",null,`${myEmail} · ${isApprover?"Reviewer":"Hotel team"}`)," ",el("button",{type:"button",class:"btn small",onclick:async()=>{await db.auth.signOut();}},"Sign out"));}
+  w.append(el("span",null,`${myEmail} · ${isAdmin?"Super admin":isApprover?"Reviewer":"Hotel team"}`)," ",el("button",{type:"button",class:"btn small",onclick:async()=>{await db.auth.signOut();}},"Sign out"));}
 F("login-form").addEventListener("submit",async e=>{e.preventDefault();if(!db)return;
   const email=F("login-email").value.trim();const btn=F("login-btn");const msg=F("login-msg");
   if(!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)){msg.hidden=false;msg.textContent="Enter a valid email address.";return;}
@@ -827,9 +856,9 @@ F("login-form").addEventListener("submit",async e=>{e.preventDefault();if(!db)re
 let lastUser;
 async function onSession(s){
   session=s;const uid=s?s.user.id:null;if(uid===lastUser){renderWho();return;}lastUser=uid;
-  if(!s){myId=null;myEmail="";isApprover=false;myHotels=[];subs=new Map();decisions=new Map();fullCache.clear();renderWho();setSignedIn(false);return;}
+  if(!s){myId=null;myEmail="";isApprover=false;isAdmin=false;myHotels=[];subs=new Map();decisions=new Map();fullCache.clear();renderWho();setSignedIn(false);return;}
   myId=s.user.id;myEmail=s.user.email||"";
-  const{data:rv}=await db.rpc("is_reviewer");isApprover=!!rv;
+  const[{data:rv},{data:ad}]=await Promise.all([db.rpc("is_reviewer"),db.rpc("is_admin")]);isApprover=!!rv;isAdmin=!!(rv&&ad);
   F("tab-overview").hidden=false; /* hotels see a version limited to their own hotel */
   F("tab-access").hidden=!isApprover;if(!isApprover&&currentView==="access")currentView="queue";
   await loadMyHotels();

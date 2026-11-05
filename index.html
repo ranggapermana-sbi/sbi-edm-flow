@@ -386,7 +386,25 @@ tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--soft)}
       <thead><tr><th>Email</th><th>Hotels</th><th></th></tr></thead>
       <tbody id="a-body"></tbody>
     </table></div>
-    <p style="font-size:12px;color:var(--muted);margin-top:10px">Reviewers (Group Digital Marketing) see every hotel and are managed in Supabase, table <code>reviewers</code>.</p>
+
+    <h2 style="margin-top:32px">Reviewers</h2>
+    <p class="lede" id="r-lede">Reviewers (Group Digital Marketing) see every hotel, approve EDMs and give hotel access. Super admins can also add or remove reviewers.</p>
+    <form class="sec access-add" id="r-form" autocomplete="off" hidden>
+      <h3>Add a reviewer</h3>
+      <div class="row">
+        <label class="f">Email
+          <input type="email" id="r-email" placeholder="name@swiss-belhotel.com" required>
+        </label>
+        <label class="f">Role
+          <select id="r-role"><option value="reviewer">Reviewer: approves EDMs, gives hotel access</option><option value="admin">Super admin: also manages reviewers</option></select>
+        </label>
+      </div>
+      <div class="btnrow" style="margin-top:10px"><button type="submit" class="btn primary" id="r-add">Add reviewer</button><span id="r-msg" class="d" style="color:var(--bad)"></span></div>
+    </form>
+    <div class="tablebox"><table>
+      <thead><tr><th>Email</th><th>Role</th><th>Added</th><th></th></tr></thead>
+      <tbody id="r-body"></tbody>
+    </table></div>
   </section>
 
   <section id="view-guide" hidden>

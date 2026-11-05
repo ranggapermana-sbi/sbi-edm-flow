@@ -12,7 +12,12 @@ create table if not exists public.reviewers (
   added_at timestamptz not null default now()
 );
 alter table public.reviewers enable row level security;
--- nobody reads or writes this table from the app; manage it in the Supabase dashboard
+-- role: 'admin' (super admin) manages reviewers and hotel access; 'reviewer' manages hotel access only
+alter table public.reviewers add column if not exists role text not null default 'reviewer';
+alter table public.reviewers add column if not exists added_by text;
+do $$ begin
+  alter table public.reviewers add constraint reviewers_role_check check (role in ('reviewer', 'admin'));
+exception when duplicate_object then null; end $$;
 
 create or replace function public.is_reviewer()
 returns boolean
@@ -26,6 +31,53 @@ as $$
     where lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
   );
 $$;
+
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.reviewers
+    where lower(email) = lower(coalesce(auth.jwt() ->> 'email', '')) and role = 'admin'
+  );
+$$;
+
+-- Reviewers can see the reviewer list; only super admins can add, change or remove reviewers.
+drop policy if exists "reviewers: reviewers read" on public.reviewers;
+create policy "reviewers: reviewers read" on public.reviewers
+  for select to authenticated using (public.is_reviewer());
+drop policy if exists "reviewers: admins add" on public.reviewers;
+create policy "reviewers: admins add" on public.reviewers
+  for insert to authenticated with check (public.is_admin() and email = lower(email));
+drop policy if exists "reviewers: admins change" on public.reviewers;
+create policy "reviewers: admins change" on public.reviewers
+  for update to authenticated using (public.is_admin()) with check (public.is_admin());
+drop policy if exists "reviewers: admins remove" on public.reviewers;
+create policy "reviewers: admins remove" on public.reviewers
+  for delete to authenticated using (public.is_admin());
+
+-- There must always be at least one super admin.
+create or replace function public.reviewers_keep_admin()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if old.role = 'admin' and not exists (select 1 from public.reviewers where role = 'admin') then
+    raise exception 'At least one super admin must remain.';
+  end if;
+  return null;
+end;
+$$;
+drop trigger if exists reviewers_keep_admin on public.reviewers;
+create constraint trigger reviewers_keep_admin
+  after update or delete on public.reviewers
+  deferrable initially deferred
+  for each row execute function public.reviewers_keep_admin();
 
 -- ============================================================
 -- 1b. Hotel access (managed by reviewers on the portal's Access page)
@@ -274,6 +326,9 @@ grant execute on function public.is_member(text) to authenticated;
 -- or not "Automatically expose new tables" is on. RLS above still decides rows.
 revoke all on public.reviewers, public.tickets, public.reviews from anon;
 revoke all on public.reviewers from authenticated;
+grant select, insert, update, delete on public.reviewers to authenticated;
+revoke all on function public.is_admin() from public, anon;
+grant execute on function public.is_admin() to authenticated;
 grant select, insert, update on public.tickets to authenticated;
 grant select, insert, update on public.reviews to authenticated;
 revoke all on public.hotel_members from anon;
@@ -361,3 +416,7 @@ on conflict do nothing;
 -- insert into public.reviewers (email) values
 --   ('digitalmarketingmgr2@swiss-belhotel.com')
 -- on conflict do nothing;
+--
+-- After that, reviewers are managed on the portal's Access page by a super admin.
+-- Make the first super admin (only needed once):
+-- update public.reviewers set role = 'admin' where email = 'digitalmarketingmgr2@swiss-belhotel.com';
