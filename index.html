@@ -134,6 +134,8 @@ tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--soft)}
 .hist{font-size:13px;display:flex;flex-direction:column;gap:6px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 20px);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:8px;font-size:13px;z-index:40;max-width:calc(100% - 32px)}
 .guide{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.guide-links{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 20px}
+.guide-links .btn{text-decoration:none;display:inline-block}
 .guide .sec{margin:0}
 .guide ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}
@@ -338,6 +340,10 @@ tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--soft)}
   <section id="view-guide" hidden>
     <h1>Guidelines reference</h1>
     <p class="lede">Summary of the EDM Template guideline 2026 used by every check on this page.</p>
+    <div class="guide-links">
+      <a class="btn" href="https://drive.google.com/file/d/1aQ-V77Iav0YBRx97Rx41CW5XuLsHxFVC/view?usp=sharing" target="_blank" rel="noopener">EDM Guidelines 2026 ↗</a>
+      <a class="btn" href="https://drive.google.com/file/d/1I4m_d7U1t3h__80e_yMbGBa3Qyg1UrbW/view?usp=sharing" target="_blank" rel="noopener">EDM Guidelines 2026 Training Session Recording ↗</a>
+    </div>
     <div class="guide">
       <div class="sec"><h3>Mandatory design elements</h3><ul>
         <li>Background off-white <span class="code">#fffffb</span></li>
