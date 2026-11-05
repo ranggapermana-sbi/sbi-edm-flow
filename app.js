@@ -669,8 +669,9 @@ function renderDetail(){
     note.value=noteDrafts.get(id)||"";note.addEventListener("input",()=>{if(note.value)noteDrafts.set(id,note.value);else noteDrafts.delete(id);});
     const act=async(status)=>{if(status==="revision"&&!note.value.trim()){toast("Add a note so the hotel knows what to change.");return;}
       const prev=decisions.get(id);const entry={status,note:note.value.trim(),by:myEmail,at:nowIso()};
-      try{await saveReview(id,{status,note:entry.note,by:myEmail,at:entry.at,history:[...((prev&&prev.history)||[]),entry].slice(-30)});noteDrafts.delete(id);toast(status==="approved"?"Approved.":status==="scheduled"?"Marked as scheduled.":"Sent back for revision.");}
-      catch(e){toast("Only reviewers from Group Digital Marketing can record a decision.");}};
+      const draft=noteDrafts.get(id);noteDrafts.delete(id); /* cleared before saving: the save re-renders the ticket */
+      try{await saveReview(id,{status,note:entry.note,by:myEmail,at:entry.at,history:[...((prev&&prev.history)||[]),entry].slice(-30)});const n=F("d-note");if(n)n.value="";toast(status==="approved"?"Approved.":status==="scheduled"?"Marked as scheduled.":"Sent back for revision.");}
+      catch(e){if(draft)noteDrafts.set(id,draft);toast("Only reviewers from Group Digital Marketing can record a decision.");}};
     if(st==="approved"||st==="scheduled"){note.placeholder="Optional note, e.g. scheduled time in Whizzmailer.";
       kids.push(el("div",{class:"sec"},el("h3",null,st==="scheduled"?"Scheduled in Whizzmailer":"Next: schedule in Whizzmailer"),
         el("p",{style:"margin:0 0 8px;font-size:13px;color:var(--muted)"},st==="scheduled"?"This EDM is scheduled. Send it back only if something must change before it goes out.":`Publish and schedule it in Whizzmailer for ${fmtDate(s.start)}, then mark it here.`),
