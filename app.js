@@ -624,10 +624,10 @@ function renderQueue(){
 
 /* ---------- detail ---------- */
 let openId=null;const recheckCache=new Map();
-function openDetail(id){openId=id;
+function openDetail(id){openId=id;setPath(ticketPath(id));
   if(isApprover&&db&&statusOf(id)==="pending"){const prev=decisions.get(id);const entry={status:"reviewing",note:"",by:myEmail,at:nowIso()};
     saveReview(id,{status:"reviewing",note:"",by:myEmail,at:entry.at,history:[...((prev&&prev.history)||[]),entry].slice(-30)}).catch(()=>{});}renderDetail();$("#overlay").hidden=false;$("#drawer").focus&&$("#drawer").focus();}
-function closeDetail(){openId=null;$("#overlay").hidden=true;}
+function closeDetail(){const was=openId;openId=null;$("#overlay").hidden=true;if(was&&/^\/tickets\/./.test(location.pathname))setPath(PATHS[currentView]||"/tickets",true);}
 $("#overlay").addEventListener("click",e=>{if(e.target.id==="overlay")closeDetail();});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&openId)closeDetail();});
 function checkList(list){return el("ul",{style:"list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px"},list.map(c=>el("li",{class:"ck"},dot(c.status),el("span",null,(c.section?c.section+": ":"")+(c.label||c.check),c.detail?el("span",{class:"d"},c.detail):null))));}
@@ -700,9 +700,25 @@ function renderOverview(){
 F("swatches").append(...Object.values(BRANDS).map(b=>el("div",null,el("span",{class:"sw",style:"background:"+b.hex}),b.name,el("span",{class:"code",style:"color:var(--muted)"},b.hex))));
 
 /* ---------- views ---------- */
-function switchView(v){currentView=v;document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.view===v?"true":"false"));["submit","queue","overview","guide"].forEach(k=>F("view-"+k).hidden=k!==v);if(v==="queue")renderQueue();if(v==="overview")renderOverview();window.scrollTo(0,0);}
+/* Each tab has its own address: /submit, /tickets, /overview, /guidelines.
+   A single ticket opens at /tickets/<ticket number>. Old #hash links still work. */
+const PATHS={submit:"/submit",queue:"/tickets",overview:"/overview",guide:"/guidelines"};
+const VIEW_OF={"submit":"submit","tickets":"queue","overview":"overview","guidelines":"guide","queue":"queue","guide":"guide"};
+function setPath(path,replace){if(location.pathname===path)return;try{history[replace?"replaceState":"pushState"]({},"",path);}catch(e){}}
+function ticketPath(id){const s=subs.get(id);return "/tickets/"+encodeURIComponent((s&&s.ticket)||id);}
+function parsePath(){const seg=location.pathname.replace(/^\/+|\/+$/g,"").split("/");const hash=(location.hash||"").slice(1);
+  const view=VIEW_OF[seg[0]]||VIEW_OF[hash]||"submit";return{view,ticket:view==="queue"&&seg[1]?decodeURIComponent(seg[1]):null};}
+let pendingTicket=null;
+function idForTicket(t){if(subs.has(t))return t;const u=t.toUpperCase();for(const[id,s]of subs)if((s.ticket||"").toUpperCase()===u)return id;return null;}
+function openPendingTicket(){if(!pendingTicket||!session)return;const id=idForTicket(pendingTicket);
+  if(id){pendingTicket=null;openDetail(id);}else if(subs.size||!loading){const t=pendingTicket;pendingTicket=null;setPath("/tickets",true);toast(`Ticket ${t} was not found, or it belongs to another hotel.`);}}
+function routeFromAddress(){const r=parsePath();switchView(r.view,{fromAddress:true});
+  if(r.ticket){pendingTicket=r.ticket;openPendingTicket();}else if(openId){openId=null;$("#overlay").hidden=true;}}
+window.addEventListener("popstate",routeFromAddress);
+function switchView(v,opts){opts=opts||{};if(v==="overview"&&session&&!isApprover)v="queue";currentView=v;
+  if(session&&!opts.fromAddress)setPath(PATHS[v]);else if(session&&location.pathname!==PATHS[v]&&!/^\/tickets\/./.test(location.pathname))setPath(PATHS[v],true);document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.view===v?"true":"false"));["submit","queue","overview","guide"].forEach(k=>F("view-"+k).hidden=k!==v);if(v==="queue")renderQueue();if(v==="overview")renderOverview();window.scrollTo(0,0);}
 document.querySelectorAll("nav.tabs button").forEach(b=>b.addEventListener("click",()=>switchView(b.dataset.view)));
-const hash=(location.hash||"").slice(1);if(["queue","overview","guide"].includes(hash))switchView(hash);
+{const r=parsePath();currentView=r.view;pendingTicket=r.ticket;}
 
 function renderAll(){refresh();renderQueue();if(!F("view-overview").hidden)renderOverview();if(openId)renderDetail();}
 refresh();renderQueue();
@@ -710,7 +726,7 @@ refresh();renderQueue();
 /* ---------- sign in (magic link) ---------- */
 function setSignedIn(on){
   F("view-login").hidden=on;document.querySelector("nav.tabs").hidden=!on;
-  if(on)switchView(currentView||"submit");else{["submit","queue","overview","guide"].forEach(k=>F("view-"+k).hidden=true);closeDetail();}
+  if(on)switchView(currentView||"submit",{fromAddress:true});else{["submit","queue","overview","guide"].forEach(k=>F("view-"+k).hidden=true);closeDetail();}
 }
 function renderWho(){const w=$("#who");w.replaceChildren();
   if(!session){w.textContent=db?"Signed out":"";return;}
@@ -731,7 +747,7 @@ async function onSession(s){
   myId=s.user.id;myEmail=s.user.email||"";
   const{data:rv}=await db.rpc("is_reviewer");isApprover=!!rv;
   F("tab-overview").hidden=!isApprover;if(!isApprover&&currentView==="overview")currentView="queue";
-  renderWho();setSignedIn(true);await loadData();refresh();
+  renderWho();setSignedIn(true);await loadData();refresh();openPendingTicket();
 }
 (async function init(){
   setSignedIn(false);F("view-login").hidden=true;$("#who").textContent="Loading…";

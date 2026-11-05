@@ -1,9 +1,26 @@
 {
   "functions": {
-    "api/visual-check.js": { "maxDuration": 60 },
-    "api/cleanup.js": { "maxDuration": 60 }
+    "api/visual-check.js": {
+      "maxDuration": 60
+    },
+    "api/cleanup.js": {
+      "maxDuration": 60
+    }
   },
   "crons": [
-    { "path": "/api/cleanup", "schedule": "0 19 * * *" }
+    {
+      "path": "/api/cleanup",
+      "schedule": "0 19 * * *"
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/(submit|tickets|overview|guidelines)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/tickets/:ticket",
+      "destination": "/index.html"
+    }
   ]
 }
