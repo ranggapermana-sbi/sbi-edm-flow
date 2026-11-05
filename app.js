@@ -631,8 +631,12 @@ function closeDetail(){const was=openId;openId=null;$("#overlay").hidden=true;if
 $("#overlay").addEventListener("click",e=>{if(e.target.id==="overlay")closeDetail();});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&openId)closeDetail();});
 function checkList(list){return el("ul",{style:"list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px"},list.map(c=>el("li",{class:"ck"},dot(c.status),el("span",null,(c.section?c.section+": ":"")+(c.label||c.check),c.detail?el("span",{class:"d"},c.detail):null))));}
+/* The 30-second refresh must not wipe what a reviewer is typing: drafts are kept per ticket,
+   the drawer is only rebuilt when the ticket or its review actually changed, and focus/scroll are restored. */
+const noteDrafts=new Map();let detailSig="";
+function detailSignature(id){const s=subs.get(id);const d=decisions.get(id);return JSON.stringify([id,s&&s.updatedAt,s&&s.ticket,d&&d.at,d&&d.status,statusOf(id),!!fullCache.get(id),!!recheckCache.get(id)]);}
 function renderDetail(){
-  const id=openId;const sum=subs.get(id);const dr=$("#drawer");if(!sum){dr.replaceChildren(el("p",null,"This ticket is not available."));return;}
+  const id=openId;detailSig=detailSignature(id);const sum=subs.get(id);const dr=$("#drawer");if(!sum){dr.replaceChildren(el("p",null,"This ticket is not available."));return;}
   const full=fullCache.get(id);if(!full)getFull(id).then(v=>{if(v&&openId===id)renderDetail();}).catch(()=>{});
   const s={...(full||{}),...sum};
   const h=HOTEL[s.hotelCode];const b=h?BRANDS[h.brand]:null;const st=statusOf(id);const d=decisions.get(id);
@@ -662,9 +666,10 @@ function renderDetail(){
   if(d&&(d.history||[]).length)kids.push(el("div",{class:"sec"},el("h3",null,"Review history"),el("div",{class:"hist"},d.history.slice().reverse().map(x=>el("div",null,statusPill(x.status)," ",el("span",{class:"code"},fmtWhen(x.at))," · ",nameOf(x.by),x.note?el("div",{style:"white-space:pre-wrap;margin-top:2px"},x.note):null)))));
   if(isApprover&&st!=="draft"){
     const note=el("textarea",{class:"plain",id:"d-note",placeholder:"What should the hotel change? Required when sending back."});
+    note.value=noteDrafts.get(id)||"";note.addEventListener("input",()=>{if(note.value)noteDrafts.set(id,note.value);else noteDrafts.delete(id);});
     const act=async(status)=>{if(status==="revision"&&!note.value.trim()){toast("Add a note so the hotel knows what to change.");return;}
       const prev=decisions.get(id);const entry={status,note:note.value.trim(),by:myEmail,at:nowIso()};
-      try{await saveReview(id,{status,note:entry.note,by:myEmail,at:entry.at,history:[...((prev&&prev.history)||[]),entry].slice(-30)});toast(status==="approved"?"Approved.":status==="scheduled"?"Marked as scheduled.":"Sent back for revision.");}
+      try{await saveReview(id,{status,note:entry.note,by:myEmail,at:entry.at,history:[...((prev&&prev.history)||[]),entry].slice(-30)});noteDrafts.delete(id);toast(status==="approved"?"Approved.":status==="scheduled"?"Marked as scheduled.":"Sent back for revision.");}
       catch(e){toast("Only reviewers from Group Digital Marketing can record a decision.");}};
     if(st==="approved"||st==="scheduled"){note.placeholder="Optional note, e.g. scheduled time in Whizzmailer.";
       kids.push(el("div",{class:"sec"},el("h3",null,st==="scheduled"?"Scheduled in Whizzmailer":"Next: schedule in Whizzmailer"),
@@ -673,7 +678,9 @@ function renderDetail(){
     else kids.push(el("div",{class:"sec"},el("h3",null,"Your decision"),note,el("div",{class:"btnrow",style:"margin-top:10px"},el("button",{type:"button",class:"btn ok",onclick:()=>act("approved")},"Approve"),el("button",{type:"button",class:"btn",onclick:()=>act("revision")},"Send back for revision"))));
   }
   if(canEditSub(id))kids.push(el("div",{class:"btnrow"},el("button",{type:"button",class:"btn primary",onclick:()=>{closeDetail();loadIntoForm(id);switchView("submit");}},st==="revision"?"Revise and resubmit":"Continue editing")));
-  dr.replaceChildren(...kids);
+  const act=document.activeElement;const focusNote=act&&act.id==="d-note"?[act.selectionStart,act.selectionEnd]:null;const top=dr.scrollTop;
+  dr.replaceChildren(...kids);dr.scrollTop=top;
+  if(focusNote){const n=F("d-note");if(n){n.focus();try{n.setSelectionRange(focusNote[0],focusNote[1]);}catch(e){}}}
 }
 
 /* ---------- overview ---------- */
@@ -740,7 +747,7 @@ function switchView(v,opts){opts=opts||{};currentView=v;
 document.querySelectorAll("nav.tabs button").forEach(b=>b.addEventListener("click",()=>switchView(b.dataset.view)));
 {const r=parsePath();currentView=r.view;pendingTicket=r.ticket;}
 
-function renderAll(){refresh();renderQueue();if(!F("view-overview").hidden)renderOverview();if(openId)renderDetail();}
+function renderAll(){refresh();renderQueue();if(!F("view-overview").hidden)renderOverview();if(openId&&detailSignature(openId)!==detailSig)renderDetail();}
 refresh();renderQueue();
 
 /* ---------- sign in (magic link) ---------- */
