@@ -134,7 +134,7 @@ tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--soft)}
 .hist{font-size:13px;display:flex;flex-direction:column;gap:6px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 20px);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:8px;font-size:13px;z-index:40;max-width:calc(100% - 32px)}
 .guide{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
-.guide-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin:0 0 24px;max-width:760px}
+.guide-links{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin:0 0 16px} /* same columns as .guide below, so the cards line up with the boxes */
 .guide-card{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card);color:var(--ink);text-decoration:none;transition:border-color .15s,transform .15s}
 .guide-card:hover,.guide-card:focus-visible{border-color:var(--muted);transform:translateY(-2px)}
 .guide-card img{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:cover;background:#f4f4f4}
