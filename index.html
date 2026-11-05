@@ -133,8 +133,9 @@ tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--soft)}
 .ticket{font-family:var(--mono);font-size:12px;font-weight:500;letter-spacing:.02em}
 .hist{font-size:13px;display:flex;flex-direction:column;gap:6px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 20px);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:8px;font-size:13px;z-index:40;max-width:calc(100% - 32px)}
-.guide{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
-.guide-links{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin:0 0 16px} /* same columns as .guide below, so the cards line up with the boxes */
+.guide{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px} /* 2 cards + 4 boxes = two rows of three */
+@media (max-width:1000px){.guide{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:640px){.guide{grid-template-columns:1fr}}
 .guide-card{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card);color:var(--ink);text-decoration:none;transition:border-color .15s,transform .15s}
 .guide-card:hover,.guide-card:focus-visible{border-color:var(--muted);transform:translateY(-2px)}
 .guide-card img{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:cover;background:#f4f4f4}
@@ -345,15 +346,13 @@ tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--soft)}
   <section id="view-guide" hidden>
     <h1>Guidelines reference</h1>
     <p class="lede">Summary of the EDM Template guideline 2026 used by every check on this page.</p>
-    <div class="guide-links">
+    <div class="guide">
       <a class="guide-card" href="https://drive.google.com/file/d/1aQ-V77Iav0YBRx97Rx41CW5XuLsHxFVC/view?usp=sharing" target="_blank" rel="noopener">
         <img src="/img/guidelines-cover.jpg" alt="EDM Template 2026 guideline cover" loading="lazy" width="960" height="541">
         <span>EDM Guidelines 2026 <em>PDF ↗</em></span></a>
       <a class="guide-card" href="https://drive.google.com/file/d/1I4m_d7U1t3h__80e_yMbGBa3Qyg1UrbW/view?usp=sharing" target="_blank" rel="noopener">
         <img class="dark" src="/img/training-cover.jpg?v=2" alt="EDM Guidelines 2026 training session" loading="lazy" width="960" height="341">
         <span>EDM Guidelines 2026 Training Session Recording <em>Video ↗</em></span></a>
-    </div>
-    <div class="guide">
       <div class="sec"><h3>Mandatory design elements</h3><ul>
         <li>Background off-white <span class="code">#fffffb</span></li>
         <li>Fonts Helvetica Neue / Helvetica / Arial (body) and Georgia (titles)</li>
