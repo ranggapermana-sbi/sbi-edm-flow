@@ -685,20 +685,20 @@ function monthCount(code,ym){const k=code+"|"+ym;if(monthCountFresh.has(k))retur
 function renderHotelRule(ym){
   const codes=[...new Set([...subs.values()].map(s=>s.hotelCode).filter(Boolean))].sort();
   const box=F("o-rule");box.hidden=false;
-  if(!codes.length){box.replaceChildren(el("div",{class:"rule"},el("span",{class:"pill s-info"},"No EDM yet"),el("span",{class:"msg"},"Submit your first EDM to see your hotel's monthly status.")));return;}
+  if(!codes.length){box.replaceChildren(el("div",{class:"rule"},el("span",{class:"pill s-fail"},"No EDM yet"),el("span",{class:"msg"},"Submit your first EDM to see your hotel's monthly status.")));return;}
   const label=new Date(ym+"-01T00:00:00").toLocaleDateString("en-GB",{month:"long",year:"numeric"});
   box.replaceChildren(...codes.map(c=>{const h=HOTEL[c];const n=monthCount(c,ym);
     const[cls,tag,msg]=n===undefined?["s-info","Checking…",""]
-      :n===0?["s-warn","No EDM yet",`Each hotel must send at least 1 EDM in ${label}.`]
-      :n===1?["s-pass","Within limit",`1 of 2 EDMs used in ${label}. You can submit 1 more.`]
-      :n===2?["s-warn","Limit reached",`2 of 2 EDMs used in ${label}. The next EDM must start in another month.`]
+      :n===0?["s-fail","No EDM yet",`No EDM is scheduled to publish in ${label} yet. Each hotel must send at least 1.`]
+      :n===1?["s-pass","Within limit",`1 of 2 EDMs scheduled to publish in ${label}. You can schedule 1 more.`]
+      :n===2?["s-warn","Limit reached",`2 of 2 EDMs scheduled to publish in ${label}. The next EDM must publish in another month.`]
       :["s-fail","Over limit",`${n} EDMs scheduled in ${label}; the maximum is 2. Contact Group Digital Marketing.`];
     return el("div",{class:"rule"},el("b",null,h?h.name:c),el("span",{class:"code",style:"color:var(--muted)"},c),el("span",{class:"pill "+cls},tag),el("span",{class:"msg"},msg));}));}
 function renderOverview(){
   const ym=F("o-month").value;
   F("o-table").hidden=!isApprover;F("o-missing-box").hidden=!isApprover;
   F("o-lede").textContent=isApprover?"Each hotel must send at least one and at most two EDMs per month. Months follow the scheduled start date."
-    :"Your hotel's EDMs at a glance. Each hotel must send at least one and at most two EDMs per month, counted by the start date.";
+    :"Your hotel's EDMs at a glance. Each hotel can schedule at most two EDMs per month (at least one). The month is the publish date (start sending), not the date the ticket was submitted.";
   if(isApprover)F("o-rule").hidden=true;else renderHotelRule(ym);const all=[...subs.entries()].map(([id,s])=>({id,s,st:statusOf(id)}));
   const inMonth=all.filter(r=>r.s.state==="submitted"&&(r.s.start||"").slice(0,7)===ym);
   const done=st=>st==="approved"||st==="scheduled";
