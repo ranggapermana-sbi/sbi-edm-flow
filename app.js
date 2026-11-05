@@ -686,6 +686,8 @@ function renderDetail(){
 
 /* ---------- overview ---------- */
 F("o-month").value=nowJkt().slice(0,7);F("o-month").addEventListener("input",renderOverview);
+/* Monthly rule badge, the same for hotel and reviewer views: 0 none, 1 within, 2 limit reached, 3+ over. */
+function ruleBadge(n){return n===0?["s-fail","No EDM yet"]:n===1?["s-pass","Within limit"]:n===2?["s-warn","Limit reached"]:["s-fail","Over limit"];}
 /* Monthly rule for a hotel account: counts every submitted EDM of that hotel (also those sent by colleagues). */
 const monthCountCache=new Map(),monthCountFresh=new Set(); /* values stay on screen while they are refreshed */
 function monthCount(code,ym){const k=code+"|"+ym;if(monthCountFresh.has(k))return monthCountCache.get(k);monthCountFresh.add(k);
@@ -705,7 +707,7 @@ function renderHotelRule(ym){
 function renderOverview(){
   const ym=F("o-month").value;
   F("o-table").hidden=!isApprover;F("o-missing-box").hidden=!isApprover;
-  F("o-lede").textContent=isApprover?"Each hotel must send at least one and at most two EDMs per month. Months follow the scheduled start date."
+  F("o-lede").textContent=isApprover?"Each hotel can schedule at most two EDMs per month (at least one). The month is the publish date (start sending), not the date the ticket was submitted. Monthly rule: Within limit = 1, Limit reached = 2."
     :"Your hotel's EDMs at a glance. Each hotel can schedule at most two EDMs per month (at least one). The month is the publish date (start sending), not the date the ticket was submitted.";
   if(isApprover)F("o-rule").hidden=true;else renderHotelRule(ym);const all=[...subs.entries()].map(([id,s])=>({id,s,st:statusOf(id)}));
   const inMonth=all.filter(r=>r.s.state==="submitted"&&(r.s.start||"").slice(0,7)===ym);
@@ -717,7 +719,7 @@ function renderOverview(){
   const codes=Object.keys(by).sort((a,b)=>(HOTEL[a]?HOTEL[a].name:a).localeCompare(HOTEL[b]?HOTEL[b].name:b));
   F("o-body").replaceChildren(...(codes.length?codes.map(c=>{const h=HOTEL[c];const rs=by[c];const n=rs.length;const b=h?BRANDS[h.brand]:null;
     return el("tr",null,el("td",null,el("div",null,h?h.name:c),el("div",{class:"code",style:"color:var(--muted)"},c)),el("td",null,b?el("span",{class:"brandchip"},el("span",{class:"sw",style:"background:"+b.hex}),b.name):"—"),
-      el("td",{class:"num"},n),el("td",null,n>2?el("span",{class:"pill s-fail"},"Over limit"):el("span",{class:"pill s-pass"},"Within limit")),el("td",{class:"num"},rs.filter(r=>done(r.st)).length),el("td",{class:"num"},rs.filter(r=>r.st==="pending"||r.st==="reviewing").length));})
+      el("td",{class:"num"},n),el("td",null,(([c,t])=>el("span",{class:"pill "+c},t))(ruleBadge(n))),el("td",{class:"num"},rs.filter(r=>done(r.st)).length),el("td",{class:"num"},rs.filter(r=>r.st==="pending"||r.st==="reviewing").length));})
     :[el("tr",null,el("td",{colspan:"6",class:"empty"},"No EDM is scheduled for this month yet."))]));
   const missing=HOTELS.filter(h=>!by[h.code]);
   F("o-missing-sum").textContent=`${missing.length} of ${HOTELS.length} hotels have no EDM scheduled for this month yet`;
