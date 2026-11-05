@@ -514,7 +514,7 @@ async function getFull(id){const c=fullCache.get(id);const s=subs.get(id);if(c&&
 async function saveReview(id,obj){const{error}=await db.from("reviews").upsert({ticket_id:id,owner:ownerOf(id),status:obj.status,at:obj.at,data:obj});if(error)throw error;await loadData();}
 const LIST_COLS="id,owner,owner_email,ticket,hotel_code,start_at,state,created_at,updated_at,submitted_at,first_submitted_at,summary";
 let loading=null;
-function loadData(){if(!db||!session)return Promise.resolve();if(loading)return loading;
+function loadData(){if(!db||!session)return Promise.resolve();if(loading)return loading;monthCountFresh.clear();
   loading=(async()=>{
     const[t,r]=await Promise.all([db.from("tickets").select(LIST_COLS).order("updated_at",{ascending:false}).limit(2000),db.from("reviews").select("ticket_id,status,at,data").limit(5000)]);
     if(t.error){toast("Could not load tickets. Reload the page.");return;}
@@ -678,8 +678,28 @@ function renderDetail(){
 
 /* ---------- overview ---------- */
 F("o-month").value=nowJkt().slice(0,7);F("o-month").addEventListener("input",renderOverview);
+/* Monthly rule for a hotel account: counts every submitted EDM of that hotel (also those sent by colleagues). */
+const monthCountCache=new Map(),monthCountFresh=new Set(); /* values stay on screen while they are refreshed */
+function monthCount(code,ym){const k=code+"|"+ym;if(monthCountFresh.has(k))return monthCountCache.get(k);monthCountFresh.add(k);
+  if(db)db.rpc("month_count",{p_hotel:code,p_month:ym,p_exclude:null}).then(({data,error})=>{if(error){monthCountFresh.delete(k);return;}monthCountCache.set(k,data||0);if(!F("view-overview").hidden)renderOverview();});return undefined;}
+function renderHotelRule(ym){
+  const codes=[...new Set([...subs.values()].map(s=>s.hotelCode).filter(Boolean))].sort();
+  const box=F("o-rule");box.hidden=false;
+  if(!codes.length){box.replaceChildren(el("div",{class:"rule"},el("span",{class:"pill s-info"},"No EDM yet"),el("span",{class:"msg"},"Submit your first EDM to see your hotel's monthly status.")));return;}
+  const label=new Date(ym+"-01T00:00:00").toLocaleDateString("en-GB",{month:"long",year:"numeric"});
+  box.replaceChildren(...codes.map(c=>{const h=HOTEL[c];const n=monthCount(c,ym);
+    const[cls,tag,msg]=n===undefined?["s-info","Checking…",""]
+      :n===0?["s-warn","No EDM yet",`Each hotel must send at least 1 EDM in ${label}.`]
+      :n===1?["s-pass","Within limit",`1 of 2 EDMs used in ${label}. You can submit 1 more.`]
+      :n===2?["s-warn","Limit reached",`2 of 2 EDMs used in ${label}. The next EDM must start in another month.`]
+      :["s-fail","Over limit",`${n} EDMs scheduled in ${label}; the maximum is 2. Contact Group Digital Marketing.`];
+    return el("div",{class:"rule"},el("b",null,h?h.name:c),el("span",{class:"code",style:"color:var(--muted)"},c),el("span",{class:"pill "+cls},tag),el("span",{class:"msg"},msg));}));}
 function renderOverview(){
-  const ym=F("o-month").value;const all=[...subs.entries()].map(([id,s])=>({id,s,st:statusOf(id)}));
+  const ym=F("o-month").value;
+  F("o-table").hidden=!isApprover;F("o-missing-box").hidden=!isApprover;
+  F("o-lede").textContent=isApprover?"Each hotel must send at least one and at most two EDMs per month. Months follow the scheduled start date."
+    :"Your hotel's EDMs at a glance. Each hotel must send at least one and at most two EDMs per month, counted by the start date.";
+  if(isApprover)F("o-rule").hidden=true;else renderHotelRule(ym);const all=[...subs.entries()].map(([id,s])=>({id,s,st:statusOf(id)}));
   const inMonth=all.filter(r=>r.s.state==="submitted"&&(r.s.start||"").slice(0,7)===ym);
   const done=st=>st==="approved"||st==="scheduled";
   const decided=all.filter(r=>done(r.st));const ftr=decided.filter(r=>{const d=decisions.get(r.id);return!(d&&(d.history||[]).some(x=>x.status==="revision"));});
@@ -715,7 +735,7 @@ function openPendingTicket(){if(!pendingTicket||!session)return;const id=idForTi
 function routeFromAddress(){const r=parsePath();switchView(r.view,{fromAddress:true});
   if(r.ticket){pendingTicket=r.ticket;openPendingTicket();}else if(openId){openId=null;$("#overlay").hidden=true;}}
 window.addEventListener("popstate",routeFromAddress);
-function switchView(v,opts){opts=opts||{};if(v==="overview"&&session&&!isApprover)v="queue";currentView=v;
+function switchView(v,opts){opts=opts||{};currentView=v;
   if(session&&!opts.fromAddress)setPath(PATHS[v]);else if(session&&location.pathname!==PATHS[v]&&!/^\/tickets\/./.test(location.pathname))setPath(PATHS[v],true);document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.view===v?"true":"false"));["submit","queue","overview","guide"].forEach(k=>F("view-"+k).hidden=k!==v);if(v==="queue")renderQueue();if(v==="overview")renderOverview();window.scrollTo(0,0);}
 document.querySelectorAll("nav.tabs button").forEach(b=>b.addEventListener("click",()=>switchView(b.dataset.view)));
 {const r=parsePath();currentView=r.view;pendingTicket=r.ticket;}
@@ -746,7 +766,7 @@ async function onSession(s){
   if(!s){myId=null;myEmail="";isApprover=false;subs=new Map();decisions=new Map();fullCache.clear();renderWho();setSignedIn(false);return;}
   myId=s.user.id;myEmail=s.user.email||"";
   const{data:rv}=await db.rpc("is_reviewer");isApprover=!!rv;
-  F("tab-overview").hidden=!isApprover;if(!isApprover&&currentView==="overview")currentView="queue";
+  F("tab-overview").hidden=false; /* hotels see a version limited to their own hotel */
   renderWho();setSignedIn(true);await loadData();refresh();openPendingTicket();
 }
 (async function init(){

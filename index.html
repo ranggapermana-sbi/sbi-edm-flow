@@ -105,6 +105,10 @@ tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--soft)}
 .code{font-family:var(--mono);font-size:12px}
 .num{font-variant-numeric:tabular-nums;text-align:right}
 .empty{padding:28px;text-align:center;color:var(--muted)}
+.o-rule{display:flex;flex-direction:column;gap:8px;margin:0 0 16px}
+.o-rule .rule{display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px}
+.o-rule .rule b{font-weight:600}
+.o-rule .rule .msg{color:var(--muted)}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px}
 .tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
 .tile b{display:block;font-size:28px;font-variant-numeric:tabular-nums;line-height:1.2}
@@ -332,10 +336,11 @@ tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--soft)}
   <!-- OVERVIEW -->
   <section id="view-overview" hidden>
     <h1>Overview</h1>
-    <p class="lede">Each hotel must send at least one and at most two EDMs per month. Months follow the scheduled start date.</p>
+    <p class="lede" id="o-lede">Each hotel must send at least one and at most two EDMs per month. Months follow the scheduled start date.</p>
     <div class="toolbar"><label class="brandchip">Month <input type="month" id="o-month"></label></div>
+    <div id="o-rule" class="o-rule" hidden></div>
     <div class="tiles" id="o-tiles"></div>
-    <div class="tablebox"><table>
+    <div class="tablebox" id="o-table"><table>
       <thead><tr><th>Hotel</th><th>Brand</th><th class="num">EDMs scheduled</th><th>Monthly rule</th><th class="num">Approved / scheduled</th><th class="num">Waiting</th></tr></thead>
       <tbody id="o-body"></tbody>
     </table></div>
