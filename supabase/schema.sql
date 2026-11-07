@@ -199,6 +199,12 @@ create policy "tickets: hotel edits own while editable" on public.tickets
   using (public.can_edit_ticket(id))
   with check (public.is_member(hotel_code) or owner = auth.uid());
 
+-- Super admins can delete any ticket (its review is removed with it).
+drop policy if exists "tickets: super admins delete" on public.tickets;
+create policy "tickets: super admins delete" on public.tickets
+  for delete to authenticated
+  using (public.is_admin());
+
 -- Owner email is always taken from the login; ticket numbers can only be
 -- set by assign_ticket(); the owner can never change.
 create or replace function public.tickets_guard()
@@ -329,7 +335,7 @@ revoke all on public.reviewers from authenticated;
 grant select, insert, update, delete on public.reviewers to authenticated;
 revoke all on function public.is_admin() from public, anon;
 grant execute on function public.is_admin() to authenticated;
-grant select, insert, update on public.tickets to authenticated;
+grant select, insert, update, delete on public.tickets to authenticated;
 grant select, insert, update on public.reviews to authenticated;
 revoke all on public.hotel_members from anon;
 grant select, insert, delete on public.hotel_members to authenticated;
@@ -360,6 +366,11 @@ create policy "screenshots: read own or as reviewer" on storage.objects
          or exists (select 1 from public.tickets t
                     where t.id = (storage.foldername(name))[2] and public.is_member(t.hotel_code)))
   );
+
+drop policy if exists "screenshots: super admins delete" on storage.objects;
+create policy "screenshots: super admins delete" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'screenshots' and public.is_admin());
 
 -- ============================================================
 -- 5b. Helpers for the Access page and the daily cleanup
@@ -399,6 +410,20 @@ as $$
 $$;
 revoke all on function public.ticket_files(text[]) from public, anon, authenticated;
 grant execute on function public.ticket_files(text[]) to service_role;
+
+-- Every screenshot of one ticket, for a super admin deleting it on the portal.
+create or replace function public.admin_ticket_files(p_id text)
+returns table (name text)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select o.name from storage.objects o
+  where public.is_admin() and o.bucket_id = 'screenshots' and (storage.foldername(o.name))[2] = p_id;
+$$;
+revoke all on function public.admin_ticket_files(text) from public, anon;
+grant execute on function public.admin_ticket_files(text) to authenticated;
 
 -- Keep access for people who already submitted before hotel access existed.
 insert into public.hotel_members (email, hotel_code, added_by)

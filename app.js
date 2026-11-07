@@ -537,6 +537,16 @@ const signedCache=new Map();
 function signedUrl(path){if(!signedCache.has(path))signedCache.set(path,db.storage.from(BUCKET).createSignedUrl(path,3600).then(r=>r.data?r.data.signedUrl:"").catch(()=>""));return signedCache.get(path);}
 function storedImg(path,alt){const img=el("img",{alt:alt||"EDM screenshot"});const a=el("a",{target:"_blank",rel:"noopener"},img);if(db)signedUrl(path).then(u=>{if(u){img.src=u;a.href=u;}});return a;}
 
+/* Super admins can delete a ticket: screenshots first (all uploaders), then the row; its review goes with it. */
+async function deleteTicket(id){const s=subs.get(id);const label=(s&&s.ticket)||"this draft";
+  const{data:files,error:fe}=await db.rpc("admin_ticket_files",{p_id:id});
+  if(fe){toast("Could not delete: "+fe.message);return;}
+  const paths=(files||[]).map(f=>f.name);
+  for(let i=0;i<paths.length;i+=100){const{error}=await db.storage.from(BUCKET).remove(paths.slice(i,i+100));if(error){toast("Could not delete the screenshots: "+error.message);return;}}
+  const{error}=await db.from("tickets").delete().eq("id",id);
+  if(error){toast("Could not delete: "+error.message);return;}
+  subs.delete(id);decisions.delete(id);fullCache.delete(id);closeDetail();toast(`Deleted ${label}.`);await loadData();renderAll();}
+
 /* ---------- save / submit ---------- */
 function canEditSub(id){if(!id)return true;const s=subs.get(id);if(!s)return true;const st=statusOf(id);return(s.owner===myId||myHotels.includes(s.hotelCode))&&(st==="draft"||st==="revision");}
 async function save(submit){
@@ -688,6 +698,9 @@ function renderDetail(){
     else kids.push(el("div",{class:"sec"},el("h3",null,"Your decision"),note,el("div",{class:"btnrow",style:"margin-top:10px"},el("button",{type:"button",class:"btn ok",onclick:()=>act("approved")},"Approve"),el("button",{type:"button",class:"btn",onclick:()=>act("revision")},"Send back for revision"))));
   }
   if(canEditSub(id))kids.push(el("div",{class:"btnrow"},el("button",{type:"button",class:"btn primary",onclick:()=>{closeDetail();loadIntoForm(id);switchView("submit");}},st==="revision"?"Revise and resubmit":"Continue editing")));
+  if(isAdmin)kids.push(el("div",{class:"sec danger-zone"},el("h3",null,"Super admin"),
+    el("p",{style:"margin:0 0 8px;font-size:13px;color:var(--muted)"},"Deleting removes this ticket, its review history and all screenshots for everyone. It cannot be undone, and the hotel's monthly count goes down by one."),
+    confirmButton("Delete ticket",()=>deleteTicket(id))));
   const act=document.activeElement;const focusNote=act&&act.id==="d-note"?[act.selectionStart,act.selectionEnd]:null;const top=dr.scrollTop;
   dr.replaceChildren(...kids);dr.scrollTop=top;
   if(focusNote){const n=F("d-note");if(n){n.focus();try{n.setSelectionRange(focusNote[0],focusNote[1]);}catch(e){}}}
