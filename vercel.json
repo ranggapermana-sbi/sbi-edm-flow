@@ -5,6 +5,9 @@
     },
     "api/cleanup.js": {
       "maxDuration": 60
+    },
+    "api/admin-users.js": {
+      "maxDuration": 15
     }
   },
   "crons": [

@@ -13,6 +13,7 @@ Portal tempat tim hotel SBI mengajukan EDM, memeriksa sendiri (self-inspection) 
 | `index.html`, `app.js` | Tampilan portal: form submit, self-inspection, tickets, overview, guidelines |
 | `api/config.js` | Memberi tahu browser alamat Supabase (hanya nilai yang memang aman untuk publik) |
 | `api/visual-check.js` | Mengirim screenshot ke Claude. Hanya bisa dipanggil oleh user yang sudah login |
+| `api/admin-users.js` | Aksi akun untuk super admin: buat akun, password sementara, blokir/buka blokir |
 | `api/cleanup.js` | Menghapus tiket dan screenshot yang berumur lebih dari 3 bulan + 1 hari (dijalankan cron harian) |
 | `supabase/schema.sql` | Tabel, aturan keamanan, nomor tiket, dan storage screenshot |
 
@@ -94,6 +95,7 @@ Di halaman yang sama ada bagian **Reviewers**:
 - **Super admin** bisa menambah atau menghapus reviewer, mengubah role (Reviewer / Super admin), dan memberi akses hotel.
 - **Reviewer** bisa melihat daftar reviewer dan memberi akses hotel, tetapi tidak bisa mengubah daftar reviewer.
 - Minimal harus selalu ada satu super admin; database menolak perubahan yang menghapus super admin terakhir.
+- Bagian **Accounts** (khusus super admin): status semua akun (password sudah dibuat/belum/sementara, login terakhir, aktif/diblokir). Super admin bisa **membuat akun** dengan password sementara tanpa mengirim email, **reset password** (password sementara), dan **memblokir/membuka blokir** akun. Password yang dibuat pengguna tidak pernah bisa dilihat siapa pun; password sementara wajib diganti pemiliknya saat login berikutnya. Butuh `SUPABASE_SECRET_KEY` di Vercel (sudah dipakai untuk pembersihan harian).
 - Super admin juga bisa **menghapus tiket** dari detail tiket (bagian *Super admin* → *Delete ticket*). Review dan semua screenshot tiket itu ikut terhapus, dan tidak bisa dibatalkan.
 
 ## Aturan yang dijaga oleh database

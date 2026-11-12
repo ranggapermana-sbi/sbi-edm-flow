@@ -397,6 +397,29 @@ $$;
 revoke all on function public.unlinked_users() from public, anon;
 grant execute on function public.unlinked_users() to authenticated;
 
+-- Accounts overview for super admins: never returns passwords, only whether one is set.
+create or replace function public.account_overview()
+returns table (user_id uuid, email text, has_password boolean, confirmed boolean,
+               must_change boolean, last_sign_in_at timestamptz, created_at timestamptz, blocked boolean)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select u.id, lower(u.email),
+         coalesce(u.encrypted_password, '') <> '',
+         u.email_confirmed_at is not null,
+         coalesce((u.raw_user_meta_data ->> 'must_change_password')::boolean, false),
+         u.last_sign_in_at, u.created_at,
+         u.banned_until is not null and u.banned_until > now()
+  from auth.users u
+  where public.is_admin() and u.email is not null
+  order by lower(u.email)
+  limit 2000;
+$$;
+revoke all on function public.account_overview() from public, anon;
+grant execute on function public.account_overview() to authenticated;
+
 -- Every screenshot of the given tickets, whoever uploaded it (used by api/cleanup.js).
 create or replace function public.ticket_files(p_ids text[])
 returns table (name text)

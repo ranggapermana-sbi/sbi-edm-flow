@@ -233,6 +233,18 @@ dialog.pw form{display:flex;flex-direction:column;gap:12px}
     </form>
   </dialog>
 
+  <dialog class="pw" id="tmp-dialog" aria-labelledby="tmp-title">
+    <form id="tmp-form" novalidate>
+      <h3 id="tmp-title" style="margin:0">Reset password</h3>
+      <p id="tmp-who" style="margin:0;font-size:13px;color:var(--muted)"></p>
+      <label class="f">Temporary password
+        <span style="display:flex;gap:6px"><input type="text" id="tmp-pw" autocomplete="off" spellcheck="false" minlength="8" required><button type="button" class="btn small" id="tmp-gen">Generate</button></span>
+      </label>
+      <p id="tmp-msg" style="margin:0;font-size:13px"></p>
+      <div class="btnrow"><button type="submit" class="btn primary" id="tmp-save">Set temporary password</button><button type="button" class="btn" id="tmp-close">Close</button></div>
+    </form>
+  </dialog>
+
   <!-- SUBMIT -->
   <section id="view-submit">
     <h1 id="form-title">New EDM submission</h1>
@@ -439,6 +451,27 @@ dialog.pw form{display:flex;flex-direction:column;gap:12px}
       <thead><tr><th>Email</th><th>Role</th><th>Added</th><th></th></tr></thead>
       <tbody id="r-body"></tbody>
     </table></div>
+  
+    <div id="acc-box" hidden>
+      <h2 style="margin-top:32px">Accounts</h2>
+      <p class="lede">Everyone who can sign in. Passwords are never shown: you can see whether one is set, give someone a temporary password, or block an account. A temporary password must be changed by its owner at the next sign-in.</p>
+      <form class="sec access-add" id="acc-form" autocomplete="off">
+        <h3>Create an account</h3>
+        <p style="margin:0 0 10px;font-size:13px;color:var(--muted)">No email is sent. Share the temporary password with the person yourself, then give them hotel access above (or add them as a reviewer).</p>
+        <div class="row">
+          <label class="f">Email <input type="email" id="acc-email" placeholder="name@swiss-belhotel.com" required></label>
+          <label class="f">Temporary password
+            <span style="display:flex;gap:6px"><input type="text" id="acc-pw" autocomplete="off" spellcheck="false" minlength="8" required><button type="button" class="btn small" id="acc-gen">Generate</button></span>
+          </label>
+        </div>
+        <div class="btnrow" style="margin-top:10px"><button type="submit" class="btn primary" id="acc-add">Create account</button><span id="acc-msg" class="d" style="color:var(--bad)"></span></div>
+      </form>
+      <div class="toolbar" style="margin-top:20px"><input type="search" id="acc-search" placeholder="Search email" style="max-width:320px"><span id="acc-count" style="color:var(--muted);font-size:13px"></span></div>
+      <div class="tablebox"><table>
+        <thead><tr><th>Email</th><th>Access</th><th>Password</th><th>Last sign-in</th><th>Status</th><th></th></tr></thead>
+        <tbody id="acc-body"></tbody>
+      </table></div>
+    </div>
   </section>
 
   <section id="view-guide" hidden>

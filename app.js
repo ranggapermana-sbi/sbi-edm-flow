@@ -778,6 +778,7 @@ async function renderAccess(reload){if(!isApprover)return;
   if(reload||!accessLoaded){const[a,u,r]=await Promise.all([db.from("hotel_members").select("email,hotel_code,added_by,added_at").order("email"),db.rpc("unlinked_users"),db.from("reviewers").select("email,role,added_by,added_at").order("email")]);
     accessRows=a.error?[]:(a.data||[]);unlinked=u.error?[]:(u.data||[]);reviewerRows=r.error?[]:(r.data||[]);accessLoaded=true;}
   renderReviewers();
+  if(isAdmin)loadAccounts(reload);else F("acc-box").hidden=true;
   // waiting list
   F("a-wait-box").hidden=!unlinked.length;
   F("a-wait").replaceChildren(...unlinked.map(u=>el("li",null,el("span",{class:"code"},u.email),el("span",{style:"color:var(--muted);font-size:12px"},u.last_sign_in_at?" · last sign-in "+fmtWhen(u.last_sign_in_at):""),
@@ -822,6 +823,46 @@ function renderReviewers(){F("r-form").hidden=!isAdmin;
       el("td",{style:"white-space:nowrap"},isAdmin&&!lastAdmin?confirmButton("Remove",()=>removeReviewer(r.email)):null));})
     :[el("tr",null,el("td",{colspan:"4",class:"empty"},"No reviewers yet."))]));}
 
+/* Accounts (super admins): status only, never passwords. Changes go through /api/admin-users (secret key stays on the server). */
+let accounts=[],accountsLoaded=false;
+function genPassword(){const abc="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";const v=new Uint32Array(12);crypto.getRandomValues(v);return[...v].map(n=>abc[n%abc.length]).join("");}
+async function adminCall(payload){const r=await fetch("/api/admin-users",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify(payload)});
+  let d={};try{d=await r.json();}catch(e){}if(!r.ok)throw new Error(d.error||"Could not save.");return d;}
+async function loadAccounts(reload){if(reload||!accountsLoaded){const{data,error}=await db.rpc("account_overview");accounts=error?[]:(data||[]);accountsLoaded=true;}renderAccounts();}
+F("acc-gen").addEventListener("click",()=>{F("acc-pw").value=genPassword();});
+F("acc-search").addEventListener("input",renderAccounts);
+F("acc-form").addEventListener("submit",async e=>{e.preventDefault();const email=F("acc-email").value.trim().toLowerCase(),pw=F("acc-pw").value,m=F("acc-msg");
+  if(!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)){m.textContent="Enter a valid email address.";return;}
+  if(pw.length<8){m.textContent="The temporary password needs at least 8 characters.";return;}
+  F("acc-add").disabled=true;try{await adminCall({action:"create",email,password:pw});m.textContent="";F("acc-email").value="";F("acc-pw").value="";
+    toast(`Account created for ${email}. Share the temporary password with them, then give hotel access above.`);ax.email.value=email;renderAccess(true);}
+  catch(err){m.textContent=err.message;}finally{F("acc-add").disabled=false;}});
+const tmpDlg=F("tmp-dialog");let tmpUser=null;
+function openReset(a){tmpUser=a;F("tmp-who").textContent=`For ${a.email}. They must choose their own password at the next sign-in.`;F("tmp-pw").value=genPassword();F("tmp-msg").textContent="";F("tmp-msg").style.color="";F("tmp-save").hidden=false;try{tmpDlg.showModal();}catch(e){tmpDlg.setAttribute("open","");}}
+F("tmp-gen").addEventListener("click",()=>{F("tmp-pw").value=genPassword();});
+F("tmp-close").addEventListener("click",()=>tmpDlg.close());
+F("tmp-form").addEventListener("submit",async e=>{e.preventDefault();const pw=F("tmp-pw").value,m=F("tmp-msg");
+  if(pw.length<8){m.style.color="var(--bad)";m.textContent="At least 8 characters.";return;}
+  F("tmp-save").disabled=true;try{await adminCall({action:"set_password",user_id:tmpUser.user_id,password:pw});
+    m.style.color="";m.textContent=`Saved. Give ${tmpUser.email} this temporary password: ${pw}`;F("tmp-save").hidden=true;loadAccounts(true);}
+  catch(err){m.style.color="var(--bad)";m.textContent=err.message;}finally{F("tmp-save").disabled=false;}});
+async function setBlocked(a,block){try{await adminCall({action:block?"block":"unblock",user_id:a.user_id});toast(block?`${a.email} can no longer sign in.`:`${a.email} can sign in again.`);loadAccounts(true);}catch(err){toast(err.message);}}
+function renderAccounts(){F("acc-box").hidden=!isAdmin;if(!isAdmin)return;
+  const roles=new Map(reviewerRows.map(r=>[r.email.toLowerCase(),r.role]));const hotels=new Map();accessRows.forEach(r=>{if(!hotels.has(r.email))hotels.set(r.email,[]);hotels.get(r.email).push(r.hotel_code);});
+  const q=F("acc-search").value.trim().toLowerCase();const rows=accounts.filter(a=>!q||a.email.includes(q));
+  F("acc-count").textContent=`${accounts.length} account(s) · ${accounts.filter(a=>!a.has_password).length} without password · ${accounts.filter(a=>a.blocked).length} blocked`;
+  F("acc-body").replaceChildren(...(rows.length?rows.map(a=>{const me=a.email===myEmail.toLowerCase();const role=roles.get(a.email);const hs=hotels.get(a.email)||[];
+    const access=role?el("span",{class:"pill "+(role==="admin"?"s-info":"s-pass")},role==="admin"?"Super admin":"Reviewer"):hs.length?el("span",{class:"code"},hs.join(", ")):el("span",{class:"pill s-warn"},"No access");
+    const pw=!a.has_password?el("span",{class:"pill s-warn"},"Not set"):a.must_change?el("span",{class:"pill s-info"},"Temporary"):el("span",{class:"pill s-pass"},"Set");
+    const status=a.blocked?el("span",{class:"pill s-fail"},"Blocked"):!a.confirmed?el("span",{class:"pill s-warn"},"Not confirmed"):el("span",{class:"pill s-pass"},"Active");
+    return el("tr",null,el("td",null,el("div",{class:"code"},a.email),me?el("div",{style:"font-size:12px;color:var(--muted)"},"You"):null),
+      el("td",null,access),el("td",null,pw),
+      el("td",{style:"font-size:12px;color:var(--muted);white-space:nowrap"},a.last_sign_in_at?fmtWhen(a.last_sign_in_at):"Never"),
+      el("td",null,status),
+      el("td",{style:"white-space:nowrap"},el("button",{type:"button",class:"btn small",onclick:()=>openReset(a)},"Reset password")," ",
+        me?null:a.blocked?el("button",{type:"button",class:"btn small",onclick:()=>setBlocked(a,false)},"Unblock"):confirmButton("Block",()=>setBlocked(a,true))));})
+    :[el("tr",null,el("td",{colspan:"6",class:"empty"},accounts.length?"No match.":"No accounts yet."))]));}
+
 /* ---------- guide ---------- */
 F("swatches").append(...Object.values(BRANDS).map(b=>el("div",null,el("span",{class:"sw",style:"background:"+b.hex}),b.name,el("span",{class:"code",style:"color:var(--muted)"},b.hex))));
 
@@ -856,7 +897,7 @@ function setSignedIn(on){
 }
 function renderWho(){const w=$("#who");w.replaceChildren();
   if(!session){w.textContent=db?"Signed out":"";return;}
-  w.append(el("span",null,`${myEmail} · ${isAdmin?"Super admin":isApprover?"Reviewer":"Hotel team"}`)," ",el("button",{type:"button",class:"btn small",onclick:openPasswordDialog},"Set password")," ",el("button",{type:"button",class:"btn small",onclick:async()=>{await db.auth.signOut();}},"Sign out"));}
+  w.append(el("span",null,`${myEmail} · ${isAdmin?"Super admin":isApprover?"Reviewer":"Hotel team"}`)," ",el("button",{type:"button",class:"btn small",onclick:()=>openPasswordDialog()},"Set password")," ",el("button",{type:"button",class:"btn small",onclick:async()=>{await db.auth.signOut();}},"Sign out"));}
 /* Sign in: email + password. A one-time email link is still there for first sign-in or a forgotten password. */
 let loginMode="password"; /* password | signup | link */
 function setLoginMode(m){loginMode=m;const msg=F("login-msg");msg.hidden=true;
@@ -891,11 +932,14 @@ F("login-form").addEventListener("submit",async e=>{e.preventDefault();if(!db)re
   }finally{btn.disabled=false;btn.textContent=label;}});
 /* Set or change the password while signed in */
 const pwDlg=F("pw-dialog");
-function openPasswordDialog(){F("pw-new").value="";F("pw-new2").value="";F("pw-msg").textContent="";try{pwDlg.showModal();}catch(e){pwDlg.setAttribute("open","");}F("pw-new").focus();}
+let pwForced=false;
+function openPasswordDialog(forced){pwForced=forced===true;F("pw-title").textContent=pwForced?"Choose your own password":"Set your password";
+  F("pw-cancel").textContent=pwForced?"Later":"Cancel";
+  F("pw-new").value="";F("pw-new2").value="";F("pw-msg").textContent=pwForced?"An admin gave you a temporary password. Choose your own now; nobody else will know it.":"";try{pwDlg.showModal();}catch(e){pwDlg.setAttribute("open","");}F("pw-new").focus();}
 F("pw-cancel").addEventListener("click",()=>pwDlg.close());
 F("pw-form").addEventListener("submit",async e=>{e.preventDefault();const a=F("pw-new").value,b=F("pw-new2").value,m=F("pw-msg");
   if(a.length<8){m.textContent="At least 8 characters.";return;}if(a!==b){m.textContent="The two passwords are not the same.";return;}
-  F("pw-save").disabled=true;const{error}=await db.auth.updateUser({password:a});F("pw-save").disabled=false;
+  F("pw-save").disabled=true;const{error}=await db.auth.updateUser({password:a,data:{must_change_password:false}});F("pw-save").disabled=false;
   if(error){m.textContent=/different|same/i.test(error.message)?"Choose a password different from the current one.":"Could not save: "+error.message;return;}
   pwDlg.close();toast("Password saved. Next time, sign in with your email and password.");});
 
@@ -908,6 +952,7 @@ async function onSession(s){
   F("tab-overview").hidden=false; /* hotels see a version limited to their own hotel */
   F("tab-access").hidden=!isApprover;if(!isApprover&&currentView==="access")currentView="queue";
   await loadMyHotels();
+  if(s.user.user_metadata&&s.user.user_metadata.must_change_password)setTimeout(()=>openPasswordDialog(true),300);
   renderWho();setSignedIn(true);await loadData();refresh();openPendingTicket();
 }
 (async function init(){
