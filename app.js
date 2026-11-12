@@ -925,6 +925,8 @@ F("login-form").addEventListener("submit",async e=>{e.preventDefault();if(!db)re
     else if(loginMode==="signup"){const{data,error}=await db.auth.signUp({email,password:pw,options:{emailRedirectTo:location.origin+location.pathname}});
       if(error)say(/rate|limit|seconds/i.test(error.message)?"Too many emails were sent just now. Wait a minute and try again.":/registered|exists/i.test(error.message)?"This email already has an account. Sign in with your password, or use \"Forgot your password?\".":"Could not create the password: "+error.message);
       else if(data&&data.session)msg.hidden=true;
+      else if(data&&data.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0)
+        say(`${email} already has an account, so no email was sent. Sign in with your password. If you never made one (for example you signed in with email links before), use "Forgot your password?" to get a sign-in link, then click "Set password" at the top.`);
       else say(`We sent a confirmation email to ${email}. Open it once in this browser; after that you sign in with your password. If this email already had an account, sign in with your password or use "Forgot your password?".`);}
     else{const{error}=await db.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}});
       say(error?(/rate|limit|seconds/i.test(error.message)?"Too many sign-in emails. Wait a minute and try again.":"Could not send the link: "+error.message)
