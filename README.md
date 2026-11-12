@@ -37,8 +37,11 @@ Portal tempat tim hotel SBI mengajukan EDM, memeriksa sendiri (self-inspection) 
    ```
    Semua email yang ada di tabel ini bisa melihat semua tiket dan memberi keputusan. Email lain otomatis dianggap tim hotel.
 
-### 3. Supabase: login dengan magic link
-1. Buka **Authentication → Sign In / Providers → Email**, lalu pastikan **Email** aktif. Opsi "Confirm email" boleh tetap aktif.
+### 3. Supabase: login (password + link email cadangan)
+1. Buka **Authentication → Sign In / Providers → Email**, lalu pastikan **Email** aktif dan **Confirm email** tetap aktif (supaya orang tidak bisa mendaftar memakai email orang lain).
+   - Login utama memakai **email + password**. Pengguna baru klik *First time here? Create a password*, lalu membuka satu email konfirmasi.
+   - Kalau lupa password: *Forgot your password? Email me a sign-in link*, lalu klik **Set password** di atas.
+   - Untuk akun uji coba tanpa email sama sekali: **Authentication → Users → Add user → Create new user**, isi email + password, centang *Auto Confirm User*.
 2. Buka **Authentication → URL Configuration**:
    - **Site URL**: isi dengan URL Vercel, misalnya `https://sbi-edm-flow.vercel.app`
    - **Redirect URLs**: tambahkan URL yang sama

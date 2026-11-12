@@ -53,7 +53,7 @@ legend{font-weight:600;padding:0 6px;font-size:13px;letter-spacing:.06em;text-tr
 .full{grid-column:1/-1}
 label.f{display:flex;flex-direction:column;gap:5px;font-weight:500;font-size:13px;min-width:0}
 label.f .hint{font-weight:400;color:var(--muted);font-size:12px}
-input[type=text],input[type=email],input[type=url],input[type=datetime-local],input[type=month],input[type=search],select,textarea{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:8px 10px;width:100%;min-width:0}
+input[type=text],input[type=email],input[type=password],input[type=url],input[type=datetime-local],input[type=month],input[type=search],select,textarea{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:8px 10px;width:100%;min-width:0}
 textarea{min-height:110px;resize:vertical;font-family:var(--mono);font-size:12px}
 textarea.plain{font-family:var(--sans);font-size:14px;min-height:70px}
 .expect{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
@@ -167,6 +167,12 @@ tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--soft)}
 .swatches div{display:flex;align-items:center;gap:8px;font-size:13px}
 .login{max-width:460px;margin:8vh auto 0;background:var(--card);border:1px solid var(--line);border-radius:12px;padding-block:8px 24px;padding-inline:24px}
 .login form{display:flex;flex-direction:column;gap:14px}
+.login-links{display:flex;flex-direction:column;align-items:flex-start;gap:6px;margin-top:14px}
+.linkbtn{background:none;border:0;padding:0;color:var(--accent,#c0392b);font:inherit;font-size:13px;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.linkbtn:hover,.linkbtn:focus-visible{text-decoration-thickness:2px}
+dialog.pw{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);padding:20px 22px;max-width:380px;width:calc(100% - 32px)}
+dialog.pw::backdrop{background:rgba(0,0,0,.45)}
+dialog.pw form{display:flex;flex-direction:column;gap:12px}
 .login-msg{margin:16px 0 0;font-size:13px;color:var(--ink);background:var(--soft);border-radius:8px;padding:10px 12px}
 .who{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -193,17 +199,39 @@ tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--soft)}
   <!-- SIGN IN -->
   <section id="view-login" hidden>
     <div class="login">
-      <h1>Sign in</h1>
-      <p class="lede">Enter your work email and we will send you a sign-in link. No password needed.</p>
+      <h1 id="login-title">Sign in</h1>
+      <p class="lede" id="login-lede">Sign in with your work email and password.</p>
       <form id="login-form" novalidate>
         <label class="f">Work email
           <input type="email" id="login-email" placeholder="name@swiss-belhotel.com" autocomplete="email" required>
         </label>
-        <button class="btn primary" id="login-btn" type="submit">Email me a sign-in link</button>
+        <label class="f" id="login-pw-wrap">Password
+          <input type="password" id="login-pw" autocomplete="current-password" minlength="8">
+        </label>
+        <label class="f" id="login-pw2-wrap" hidden>Repeat password
+          <input type="password" id="login-pw2" autocomplete="new-password" minlength="8">
+        </label>
+        <button class="btn primary" id="login-btn" type="submit">Sign in</button>
       </form>
+      <div class="login-links">
+        <button type="button" class="linkbtn" id="mode-signup">First time here? Create a password</button>
+        <button type="button" class="linkbtn" id="mode-link">Forgot your password? Email me a sign-in link</button>
+        <button type="button" class="linkbtn" id="mode-signin" hidden>Back to sign in with password</button>
+      </div>
       <p class="login-msg" id="login-msg" hidden></p>
     </div>
   </section>
+
+  <dialog class="pw" id="pw-dialog" aria-labelledby="pw-title">
+    <form id="pw-form" novalidate>
+      <h3 id="pw-title" style="margin:0">Set your password</h3>
+      <p style="margin:0;font-size:13px;color:var(--muted)">Next time, sign in with your email and this password; no email link needed. At least 8 characters.</p>
+      <label class="f">New password <input type="password" id="pw-new" autocomplete="new-password" minlength="8" required></label>
+      <label class="f">Repeat password <input type="password" id="pw-new2" autocomplete="new-password" minlength="8" required></label>
+      <p id="pw-msg" style="margin:0;font-size:13px;color:var(--bad)"></p>
+      <div class="btnrow"><button type="submit" class="btn primary" id="pw-save">Save password</button><button type="button" class="btn" id="pw-cancel">Cancel</button></div>
+    </form>
+  </dialog>
 
   <!-- SUBMIT -->
   <section id="view-submit">

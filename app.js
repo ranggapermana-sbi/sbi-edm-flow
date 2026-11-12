@@ -856,15 +856,48 @@ function setSignedIn(on){
 }
 function renderWho(){const w=$("#who");w.replaceChildren();
   if(!session){w.textContent=db?"Signed out":"";return;}
-  w.append(el("span",null,`${myEmail} · ${isAdmin?"Super admin":isApprover?"Reviewer":"Hotel team"}`)," ",el("button",{type:"button",class:"btn small",onclick:async()=>{await db.auth.signOut();}},"Sign out"));}
+  w.append(el("span",null,`${myEmail} · ${isAdmin?"Super admin":isApprover?"Reviewer":"Hotel team"}`)," ",el("button",{type:"button",class:"btn small",onclick:openPasswordDialog},"Set password")," ",el("button",{type:"button",class:"btn small",onclick:async()=>{await db.auth.signOut();}},"Sign out"));}
+/* Sign in: email + password. A one-time email link is still there for first sign-in or a forgotten password. */
+let loginMode="password"; /* password | signup | link */
+function setLoginMode(m){loginMode=m;const msg=F("login-msg");msg.hidden=true;
+  F("login-title").textContent=m==="signup"?"Create your password":m==="link"?"Sign in with an email link":"Sign in";
+  F("login-lede").textContent=m==="signup"?"Use your work email and choose a password (at least 8 characters). We send one email to confirm the address; after that you sign in with your password."
+    :m==="link"?"We email you a one-time sign-in link. After signing in, use \"Set password\" at the top so you don't need links again.":"Sign in with your work email and password.";
+  F("login-pw-wrap").hidden=m==="link";F("login-pw2-wrap").hidden=m!=="signup";
+  F("login-pw").autocomplete=m==="signup"?"new-password":"current-password";
+  F("login-btn").textContent=m==="signup"?"Create password":m==="link"?"Email me a sign-in link":"Sign in";
+  F("mode-signup").hidden=m!=="password";F("mode-link").hidden=m!=="password";F("mode-signin").hidden=m==="password";}
+F("mode-signup").addEventListener("click",()=>setLoginMode("signup"));
+F("mode-link").addEventListener("click",()=>setLoginMode("link"));
+F("mode-signin").addEventListener("click",()=>setLoginMode("password"));
 F("login-form").addEventListener("submit",async e=>{e.preventDefault();if(!db)return;
-  const email=F("login-email").value.trim();const btn=F("login-btn");const msg=F("login-msg");
-  if(!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)){msg.hidden=false;msg.textContent="Enter a valid email address.";return;}
-  btn.disabled=true;btn.textContent="Sending…";
-  const{error}=await db.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}});
-  btn.disabled=false;btn.textContent="Email me a sign-in link";msg.hidden=false;
-  msg.textContent=error?(/rate|limit|seconds/i.test(error.message)?"Too many sign-in emails. Wait a minute and try again.":"Could not send the link: "+error.message)
-    :`Check the inbox of ${email} and open the sign-in link in this same browser. It can take a minute to arrive; also check the spam folder.`;});
+  const email=F("login-email").value.trim().toLowerCase();const pw=F("login-pw").value;const btn=F("login-btn");const msg=F("login-msg");const label=btn.textContent;
+  const say=t=>{msg.hidden=false;msg.textContent=t;};
+  if(!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email))return say("Enter a valid email address.");
+  if(loginMode!=="link"&&pw.length<8)return say("The password needs at least 8 characters.");
+  if(loginMode==="signup"&&pw!==F("login-pw2").value)return say("The two passwords are not the same.");
+  btn.disabled=true;btn.textContent="Please wait…";
+  try{
+    if(loginMode==="password"){const{error}=await db.auth.signInWithPassword({email,password:pw});
+      if(error)say(/confirm/i.test(error.message)?"Confirm your email first: open the link we sent when you created your password.":"Wrong email or password. If you used to sign in with an email link, choose \"Forgot your password?\" once, then set a password at the top.");
+      else msg.hidden=true;}
+    else if(loginMode==="signup"){const{data,error}=await db.auth.signUp({email,password:pw,options:{emailRedirectTo:location.origin+location.pathname}});
+      if(error)say(/rate|limit|seconds/i.test(error.message)?"Too many emails were sent just now. Wait a minute and try again.":/registered|exists/i.test(error.message)?"This email already has an account. Sign in with your password, or use \"Forgot your password?\".":"Could not create the password: "+error.message);
+      else if(data&&data.session)msg.hidden=true;
+      else say(`We sent a confirmation email to ${email}. Open it once in this browser; after that you sign in with your password. If this email already had an account, sign in with your password or use "Forgot your password?".`);}
+    else{const{error}=await db.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}});
+      say(error?(/rate|limit|seconds/i.test(error.message)?"Too many sign-in emails. Wait a minute and try again.":"Could not send the link: "+error.message)
+        :`Check the inbox of ${email} and open the sign-in link in this same browser. It can take a minute to arrive; also check the spam folder.`);}
+  }finally{btn.disabled=false;btn.textContent=label;}});
+/* Set or change the password while signed in */
+const pwDlg=F("pw-dialog");
+function openPasswordDialog(){F("pw-new").value="";F("pw-new2").value="";F("pw-msg").textContent="";try{pwDlg.showModal();}catch(e){pwDlg.setAttribute("open","");}F("pw-new").focus();}
+F("pw-cancel").addEventListener("click",()=>pwDlg.close());
+F("pw-form").addEventListener("submit",async e=>{e.preventDefault();const a=F("pw-new").value,b=F("pw-new2").value,m=F("pw-msg");
+  if(a.length<8){m.textContent="At least 8 characters.";return;}if(a!==b){m.textContent="The two passwords are not the same.";return;}
+  F("pw-save").disabled=true;const{error}=await db.auth.updateUser({password:a});F("pw-save").disabled=false;
+  if(error){m.textContent=/different|same/i.test(error.message)?"Choose a password different from the current one.":"Could not save: "+error.message;return;}
+  pwDlg.close();toast("Password saved. Next time, sign in with your email and password.");});
 
 let lastUser;
 async function onSession(s){
