@@ -448,6 +448,80 @@ $$;
 revoke all on function public.admin_ticket_files(text) from public, anon;
 grant execute on function public.admin_ticket_files(text) to authenticated;
 
+-- ============================================================
+-- 5b. Performance reports
+--     Two weeks after a scheduled EDM starts sending, the hotel enters
+--     sent, read and unique clicks from Whizzmailer. Rates are worked out
+--     by the portal. A report keeps a copy of the ticket's hotel, campaign
+--     and send date, so it stays after the daily cleanup removes the ticket.
+-- ============================================================
+create table if not exists public.edm_reports (
+  ticket_id      text primary key,
+  ticket         text,
+  hotel_code     text not null,
+  campaign       text,
+  start_at       text,
+  sent           integer not null check (sent > 0),
+  reads          integer not null check (reads >= 0 and reads <= sent),
+  unique_clicks  integer not null check (unique_clicks >= 0 and unique_clicks <= sent),
+  reported_by    uuid default auth.uid(),
+  reported_email text,
+  reported_at    timestamptz not null default now(),
+  updated_at     timestamptz not null default now()
+);
+create index if not exists edm_reports_hotel_idx on public.edm_reports (hotel_code, start_at);
+alter table public.edm_reports enable row level security;
+
+drop policy if exists "edm_reports: read own hotel or as reviewer" on public.edm_reports;
+create policy "edm_reports: read own hotel or as reviewer" on public.edm_reports
+  for select to authenticated
+  using (public.is_member(hotel_code) or public.is_reviewer() or reported_by = auth.uid());
+
+drop policy if exists "edm_reports: super admins delete" on public.edm_reports;
+create policy "edm_reports: super admins delete" on public.edm_reports
+  for delete to authenticated
+  using (public.is_admin());
+
+-- Reports are written only through this function, which checks the ticket:
+-- it must be marked Scheduled and its send date must be at least 14 days ago (Jakarta).
+-- The same call corrects a report that was already sent.
+create or replace function public.submit_report(p_id text, p_sent integer, p_reads integer, p_clicks integer)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  t public.tickets;
+  r public.reviews;
+begin
+  select * into t from public.tickets where id = p_id;
+  if not found or not (t.owner = auth.uid() or public.is_member(t.hotel_code) or public.is_reviewer()) then
+    raise exception 'ticket not found';
+  end if;
+  select * into r from public.reviews where ticket_id = p_id;
+  if not found or r.status <> 'scheduled' or r.at < coalesce(t.submitted_at, '') then
+    raise exception 'only scheduled EDMs can be reported';
+  end if;
+  if t.start_at is null or (left(t.start_at, 10))::date + 14 > (now() at time zone 'Asia/Jakarta')::date then
+    raise exception 'the report opens 14 days after the send date';
+  end if;
+  if p_sent is null or p_sent <= 0 or p_reads is null or p_reads < 0 or p_reads > p_sent
+     or p_clicks is null or p_clicks < 0 or p_clicks > p_sent then
+    raise exception 'check the numbers: read and unique clicks cannot be more than sent';
+  end if;
+  insert into public.edm_reports (ticket_id, ticket, hotel_code, campaign, start_at, sent, reads, unique_clicks, reported_by, reported_email)
+  values (t.id, t.ticket, t.hotel_code, t.summary ->> 'campaign', t.start_at, p_sent, p_reads, p_clicks, auth.uid(), auth.jwt() ->> 'email')
+  on conflict (ticket_id) do update set
+    ticket = excluded.ticket, hotel_code = excluded.hotel_code, campaign = excluded.campaign, start_at = excluded.start_at,
+    sent = excluded.sent, reads = excluded.reads, unique_clicks = excluded.unique_clicks,
+    reported_by = excluded.reported_by, reported_email = excluded.reported_email, updated_at = now();
+end;
+$$;
+revoke all on function public.submit_report(text, integer, integer, integer) from public, anon;
+grant execute on function public.submit_report(text, integer, integer, integer) to authenticated;
+grant select, delete on public.edm_reports to authenticated;
+
 -- Keep access for people who already submitted before hotel access existed.
 insert into public.hotel_members (email, hotel_code, added_by)
 select distinct lower(t.owner_email), t.hotel_code, 'auto: existing ticket'

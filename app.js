@@ -392,7 +392,7 @@ function tally(list){const t={pass:0,warn:0,fail:0,todo:0,info:0};list.forEach(c
 /* ---------- state ---------- */
 let db=null,cfg=null,session=null,myId=null,myEmail="",isApprover=false,aiEnabled=false,currentView="submit";
 const BUCKET="screenshots";
-let subs=new Map(),decisions=new Map();
+let subs=new Map(),decisions=new Map(),reports=new Map(),reportsReady=true;
 let form=blankForm();
 function blankForm(){return{id:null,files:[],fileUrls:[],screenshotIds:[],uploadedSig:null,ai:null,aiSig:null,checks:{},existing:null,locked:false,baseDate:null};}
 /* during a revision only the screenshot, the HTML, the note and the checklist stay editable */
@@ -549,10 +549,12 @@ const LIST_COLS="id,owner,owner_email,ticket,hotel_code,start_at,state,created_a
 let loading=null;
 function loadData(){if(!db||!session)return Promise.resolve();if(loading)return loading;monthCountFresh.clear();
   loading=(async()=>{
-    const[t,r]=await Promise.all([db.from("tickets").select(LIST_COLS).order("updated_at",{ascending:false}).limit(2000),db.from("reviews").select("ticket_id,status,at,data").limit(5000)]);
+    const[t,r,rp]=await Promise.all([db.from("tickets").select(LIST_COLS).order("updated_at",{ascending:false}).limit(2000),db.from("reviews").select("ticket_id,status,at,data").limit(5000),
+      db.from("edm_reports").select("*").order("start_at",{ascending:false}).limit(10000)]);
     if(t.error){toast("Could not load tickets. Reload the page.");return;}
     subs=new Map(t.data.map(x=>[x.id,rowSummary(x)]));
     decisions=new Map((r.data||[]).map(x=>[x.ticket_id,{...(x.data||{}),status:x.status,at:x.at}]));
+    reportsReady=!rp.error;reports=new Map((rp.data||[]).map(x=>[x.ticket_id,x]));
     renderAll();
   })().finally(()=>{loading=null;});
   return loading;}
@@ -567,6 +569,7 @@ async function deleteTicket(id){const s=subs.get(id);const label=(s&&s.ticket)||
   if(fe){toast("Could not delete: "+fe.message);return;}
   const paths=(files||[]).map(f=>f.name);
   for(let i=0;i<paths.length;i+=100){const{error}=await db.storage.from(BUCKET).remove(paths.slice(i,i+100));if(error){toast("Could not delete the screenshots: "+error.message);return;}}
+  if(reports.has(id)){const{error:re}=await db.from("edm_reports").delete().eq("ticket_id",id);if(re){toast("Could not delete the report: "+re.message);return;}reports.delete(id);}
   const{error}=await db.from("tickets").delete().eq("id",id);
   if(error){toast("Could not delete: "+error.message);return;}
   subs.delete(id);decisions.delete(id);fullCache.delete(id);closeDetail();toast(`Deleted ${label}.`);await loadData();renderAll();}
@@ -659,7 +662,7 @@ function renderQueue(){
   if(!rows.length){body.replaceChildren(el("tr",null,el("td",{colspan:"8",class:"empty"},db?(subs.size?"No submission matches these filters.":(isApprover?"No EDM has been submitted yet.":"You have no tickets yet. Submit an EDM to get your first ticket number.")):"Sign in to see your tickets.")));return;}
   body.replaceChildren(...rows.map(({id,s,st})=>{const h=HOTEL[s.hotelCode];const sc=checkScore(s);
     const tr=el("tr",{class:"click",tabindex:"0",onclick:()=>openDetail(id),onkeydown:e=>{if(e.key==="Enter")openDetail(id);}},
-      el("td",{class:"ticket"},s.ticket||"—"),el("td",null,statusPill(st),el("div",null,stepBar(st)),st==="revision"&&decisions.get(id)&&decisions.get(id).note?el("div",{style:"font-size:12px;color:var(--muted);max-width:28ch"},"Note: "+decisions.get(id).note.slice(0,90)):null),el("td",null,el("div",null,h?h.name:s.hotelCode),el("div",{class:"code",style:"color:var(--muted)"},s.hotelCode)),el("td",null,s.campaign||"—"),
+      el("td",{class:"ticket"},s.ticket||"—"),el("td",null,statusPill(st),el("div",null,stepBar(st)),reportTag(id),st==="revision"&&decisions.get(id)&&decisions.get(id).note?el("div",{style:"font-size:12px;color:var(--muted);max-width:28ch"},"Note: "+decisions.get(id).note.slice(0,90)):null),el("td",null,el("div",null,h?h.name:s.hotelCode),el("div",{class:"code",style:"color:var(--muted)"},s.hotelCode)),el("td",null,s.campaign||"—"),
       el("td",{class:"code"},fmtDate(s.start)),el("td",{class:"num"},sc.n?`${sc.t.pass}/${sc.n}`:"—",sc.t.fail?el("div",{style:"color:var(--bad);font-size:12px"},`${sc.t.fail} fail`):null),
       el("td",null,s.pic?el("div",null,s.pic):nameOf(s.ownerEmail),s.picPosition?el("div",{style:"color:var(--muted);font-size:12px"},s.picPosition):null),el("td",{class:"code"},fmtWhen(s.updatedAt)));return tr;}));
 }
@@ -677,7 +680,7 @@ function checkList(list){return el("ul",{style:"list-style:none;margin:0;padding
 /* The 30-second refresh must not wipe what a reviewer is typing: drafts are kept per ticket,
    the drawer is only rebuilt when the ticket or its review actually changed, and focus/scroll are restored. */
 const noteDrafts=new Map();let detailSig="";
-function detailSignature(id){const s=subs.get(id);const d=decisions.get(id);return JSON.stringify([id,s&&s.updatedAt,s&&s.ticket,d&&d.at,d&&d.status,statusOf(id),!!fullCache.get(id),!!recheckCache.get(id)]);}
+function detailSignature(id){const s=subs.get(id);const d=decisions.get(id);return JSON.stringify([id,s&&s.updatedAt,s&&s.ticket,d&&d.at,d&&d.status,statusOf(id),!!fullCache.get(id),!!recheckCache.get(id),(reports.get(id)||{}).updated_at,reportState(id)]);}
 function renderDetail(){
   const id=openId;detailSig=detailSignature(id);const sum=subs.get(id);const dr=$("#drawer");if(!sum){dr.replaceChildren(el("p",null,"This ticket is not available."));return;}
   const full=fullCache.get(id);if(!full)getFull(id).then(v=>{if(v&&openId===id)renderDetail();}).catch(()=>{});
@@ -688,6 +691,7 @@ function renderDetail(){
   const kids=[el("div",{class:"btnrow",style:"justify-content:space-between"},statusPill(st),el("button",{type:"button",class:"btn small",onclick:closeDetail},"Close")),
     el("div",{class:"ticket",style:"margin-top:10px;color:var(--muted)"},s.ticket?"Ticket "+s.ticket:"Draft, no ticket yet"),
     el("h2",{style:"margin-top:2px"},s.campaign||"Untitled EDM"),stepper(st),meta];
+  const rsec=reportSection(id);if(rsec)kids.push(rsec);
   if(!full)kids.push(el("p",{class:"d",style:"color:var(--muted)"},"Loading the full submission…"));
   if(s.previewUrl&&/^https:\/\//.test(s.previewUrl))kids.push(el("p",null,el("a",{href:s.previewUrl,target:"_blank",rel:"noopener"},"Open the Whizzmailer preview ↗")));
   const shotRow=ids=>el("div",{class:"shots"},ids.map(i=>storedImg(i)));
@@ -723,7 +727,7 @@ function renderDetail(){
   }
   if(canEditSub(id))kids.push(el("div",{class:"btnrow"},el("button",{type:"button",class:"btn primary",onclick:()=>{closeDetail();loadIntoForm(id);switchView("submit");}},st==="revision"?"Revise and resubmit":"Continue editing")));
   if(isAdmin)kids.push(el("div",{class:"sec danger-zone"},el("h3",null,"Super admin"),
-    el("p",{style:"margin:0 0 8px;font-size:13px;color:var(--muted)"},"Deleting removes this ticket, its review history and all screenshots for everyone. It cannot be undone, and the hotel's monthly count goes down by one."),
+    el("p",{style:"margin:0 0 8px;font-size:13px;color:var(--muted)"},"Deleting removes this ticket, its review history, its report and all screenshots for everyone. It cannot be undone, and the hotel's monthly count goes down by one."),
     confirmButton("Delete ticket",()=>deleteTicket(id))));
   const act=document.activeElement;const focusNote=act&&act.id==="d-note"?[act.selectionStart,act.selectionEnd]:null;const top=dr.scrollTop;
   dr.replaceChildren(...kids);dr.scrollTop=top;
@@ -771,6 +775,92 @@ function renderOverview(){
   F("o-missing-sum").textContent=`${missing.length} of ${HOTELS.length} hotels have no EDM scheduled for this month yet`;
   F("o-missing").textContent=missing.map(h=>h.code).join(" · ");
 }
+
+
+/* ---------- reports ----------
+   Two weeks after a scheduled EDM starts sending, the hotel enters sent, read and unique clicks.
+   Read rate = read ÷ sent, click rate = unique clicks ÷ sent. Totals are summed before dividing.
+   Reports keep their own copy of hotel, campaign and send date, so they outlive the ticket cleanup. */
+const REPORT_DAYS=14;
+function addDaysDate(s,n){const d=new Date(s.slice(0,10)+"T00:00:00Z");d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);}
+function fmtDay(s){if(!s)return"—";const p=dparts(s);return`${+p.d} ${MON[p.m-1]} ${p.y}`;}
+function reportOpens(id){const s=subs.get(id);return s&&s.start?addDaysDate(s.start,REPORT_DAYS):null;}
+/* null: no report for this ticket (not scheduled); "later": not open yet; "due": waiting; "done": sent */
+function reportState(id){if(statusOf(id)!=="scheduled")return reports.has(id)?"done":null;const s=subs.get(id);if(!s||!s.start)return null;if(reports.has(id))return"done";return nowJkt().slice(0,10)>=reportOpens(id)?"due":"later";}
+function canReport(id){const s=subs.get(id);return!!(s&&db&&(s.owner===myId||myHotels.includes(s.hotelCode)||isApprover));}
+const rate=(a,b)=>b?a/b*100:null;
+const fmtPct=v=>v==null?"—":v.toFixed(1)+"%";
+const fmtN=n=>n==null?"—":Number(n).toLocaleString("en-US");
+function reportTag(id){const r=reportState(id);if(!r)return null;
+  if(r==="done")return el("div",{style:"margin-top:4px"},el("span",{class:"pill s-pass"},"Reported"));
+  if(r==="due")return el("div",{style:"margin-top:4px"},el("span",{class:"pill s-warn"},"Report due"));
+  return el("div",{style:"margin-top:4px;font-size:12px;color:var(--muted)"},"Report from "+fmtDay(reportOpens(id)));}
+function rateBoxes(sent,read,clicks){return[["Read rate",fmtPct(rate(read,sent))],["Click rate",fmtPct(rate(clicks,sent))]].map(([k,v])=>el("div",null,el("b",null,v),k));}
+function reportSection(id){const r=reportState(id);if(!r)return null;const rp=reports.get(id);
+  if(r==="done"&&rp)return el("div",{class:"sec"},el("h3",null,"Report"),
+    el("div",{class:"rep-grid"},[["Sent",fmtN(rp.sent)],["Read",fmtN(rp.reads)],["Unique clicks",fmtN(rp.unique_clicks)]].map(([k,v])=>el("div",null,el("b",null,v),k)),rateBoxes(rp.sent,rp.reads,rp.unique_clicks)),
+    el("p",{style:"margin:8px 0 0;font-size:12px;color:var(--muted)"},`Reported by ${nameOf(rp.reported_email)} · ${fmtWhen(rp.updated_at||rp.reported_at)}`),
+    canReport(id)&&subs.has(id)&&statusOf(id)==="scheduled"?el("div",{class:"btnrow",style:"margin-top:10px"},el("button",{type:"button",class:"btn small",onclick:()=>openReport(id)},"Correct the numbers")):null);
+  if(r==="due")return el("div",{class:"sec rp-due"},el("h3",null,"Report due"),
+    el("p",{style:"margin:0 0 8px;font-size:13px;color:var(--muted)"},`This EDM started sending on ${fmtDay(subs.get(id).start)}. Enter sent, read and unique clicks from the Whizzmailer report.`),
+    canReport(id)?el("button",{type:"button",class:"btn primary",onclick:()=>openReport(id)},"Fill in the report"):el("p",{style:"margin:0;font-size:13px"},"Waiting for the hotel."));
+  return el("div",{class:"sec"},el("h3",null,"Report"),el("p",{style:"margin:0;font-size:13px;color:var(--muted)"},`The report opens on ${fmtDay(reportOpens(id))}, two weeks after the send date. You will see a "Report due" tag then.`));}
+const rptDlg=F("rpt-dialog");let rptId=null;
+function rptNums(){return["rpt-sent","rpt-read","rpt-clicks"].map(k=>{const v=F(k).value.trim();return v===""?null:Number(v);});}
+function rptCheck(){const[s,r,c]=rptNums();const bad=[s,r,c].some(v=>v!=null&&(!Number.isInteger(v)||v<0));
+  F("rpt-rates").replaceChildren(...rateBoxes(s,r||0,c||0).map((b,i)=>{if((i===0?r:c)==null||!s)b.firstChild.textContent="—";return b;}));
+  return bad?"Use whole numbers only.":s==null||r==null||c==null?"Fill in all three numbers.":s<1?"Sent must be at least 1.":r>s?"Read cannot be more than sent.":c>s?"Unique clicks cannot be more than sent.":"";}
+function openReport(id){const s=subs.get(id);if(!s)return;rptId=id;const rp=reports.get(id);const h=HOTEL[s.hotelCode];
+  F("rpt-title").textContent=rp?"Correct the report":"EDM report";
+  F("rpt-who").textContent=`${s.ticket||""} · ${h?h.name:s.hotelCode} · ${s.campaign||"EDM"} · sent ${fmtDay(s.start)}. Copy the numbers from the campaign report in Whizzmailer.`;
+  F("rpt-sent").value=rp?rp.sent:"";F("rpt-read").value=rp?rp.reads:"";F("rpt-clicks").value=rp?rp.unique_clicks:"";F("rpt-msg").textContent="";rptCheck();
+  try{rptDlg.showModal();}catch(e){rptDlg.setAttribute("open","");}F("rpt-sent").focus();}
+["rpt-sent","rpt-read","rpt-clicks"].forEach(k=>F(k).addEventListener("input",()=>{const m=rptCheck();if(F("rpt-msg").textContent)F("rpt-msg").textContent=m;}));
+F("rpt-cancel").addEventListener("click",()=>rptDlg.close());
+F("rpt-form").addEventListener("submit",async e=>{e.preventDefault();const m=rptCheck();if(m){F("rpt-msg").textContent=m;return;}
+  const[sent,read,clicks]=rptNums();F("rpt-save").disabled=true;
+  const{error}=await db.rpc("submit_report",{p_id:rptId,p_sent:sent,p_reads:read,p_clicks:clicks});F("rpt-save").disabled=false;
+  if(error){F("rpt-msg").textContent=/14 days/.test(error.message)?"The report opens 14 days after the send date.":/scheduled/.test(error.message)?"Only EDMs marked as scheduled can be reported.":/numbers/.test(error.message)?"Read and unique clicks cannot be more than sent.":/submit_report|function|schema cache/i.test(error.message)?"Reports are not set up in the database yet. Ask a super admin to run the latest schema.sql.":"Could not save: "+error.message;return;}
+  rptDlg.close();toast("Report saved. Thank you!");await loadData();});
+function dueList(){return[...subs.keys()].filter(id=>reportState(id)==="due"&&(isApprover||canReport(id))).sort((a,b)=>String(subs.get(a).start).localeCompare(String(subs.get(b).start)));}
+function renderReportBadge(){const n=isApprover?0:dueList().length;const b=F("tab-reports-n");b.hidden=!n;b.textContent=n;F("tab-reports").setAttribute("aria-label",n?`Reports, ${n} due`:"Reports");}
+{const ym=nowJkt().slice(0,7);const d=new Date(ym+"-01T00:00:00Z");d.setUTCMonth(d.getUTCMonth()-5);F("rp-from").value=d.toISOString().slice(0,7);F("rp-to").value=ym;}
+["rp-from","rp-to","rp-hotel"].forEach(k=>F(k).addEventListener("input",renderReports));
+function reportRows(){const from=F("rp-from").value||"0000-00",to=F("rp-to").value||"9999-99",hc=F("rp-hotel").value;
+  return[...reports.values()].filter(r=>{const m=(r.start_at||"").slice(0,7);return m>=from&&m<=to&&(!hc||r.hotel_code===hc);}).sort((a,b)=>String(b.start_at).localeCompare(String(a.start_at)));}
+function renderReports(){
+  F("rp-missing").hidden=reportsReady;
+  /* hotel filter: every hotel that has a report or that this account handles */
+  const sel=F("rp-hotel");const cur=sel.value;const codes=[...new Set([...[...reports.values()].map(r=>r.hotel_code),...myHotels])].sort((a,b)=>(HOTEL[a]?HOTEL[a].name:a).localeCompare(HOTEL[b]?HOTEL[b].name:b));
+  sel.replaceChildren(el("option",{value:""},isApprover?"All hotels":"All my hotels"),...codes.map(c=>el("option",{value:c},HOTEL[c]?`${HOTEL[c].name} (${c})`:c)));sel.value=codes.includes(cur)?cur:"";sel.hidden=!isApprover&&codes.length<2;
+  // due list
+  const due=dueList();const box=F("rp-due-box");box.hidden=!due.length;
+  F("rp-due-title").textContent=isApprover?`Waiting for the hotel's report (${due.length})`:`Reports to fill in (${due.length})`;
+  F("rp-due-lede").textContent=isApprover?"Scheduled EDMs that started sending two weeks ago or more and have no report yet.":"These EDMs started sending two weeks ago or more. Enter the numbers from the Whizzmailer report.";
+  F("rp-due").replaceChildren(...due.map(id=>{const s=subs.get(id);const h=HOTEL[s.hotelCode];return el("tr",null,el("td",{class:"ticket"},s.ticket||"—"),el("td",null,el("div",null,h?h.name:s.hotelCode),el("div",{class:"code",style:"color:var(--muted)"},s.hotelCode)),el("td",null,s.campaign||"—"),el("td",{class:"code"},fmtDay(s.start)),el("td",{class:"code"},fmtDay(reportOpens(id))),
+    el("td",{style:"white-space:nowrap"},canReport(id)?el("button",{type:"button",class:"btn small primary",onclick:()=>openReport(id)},"Fill in"):null," ",el("button",{type:"button",class:"btn small",onclick:()=>openDetail(id)},"Open ticket")));}));
+  // totals
+  const rows=reportRows();const sum=(a,k)=>a.reduce((t,r)=>t+(+r[k]||0),0);const S=sum(rows,"sent"),R=sum(rows,"reads"),C=sum(rows,"unique_clicks");
+  F("rp-tiles").replaceChildren(...[[fmtN(rows.length),"EDMs reported"],[fmtN(S),"Emails sent"],[fmtPct(rate(R,S)),`Read rate · ${fmtN(R)} read`],[fmtPct(rate(C,S)),`Click rate · ${fmtN(C)} unique clicks`],[fmtN(due.length),isApprover?"Reports still missing (all months)":"Reports to fill in"]].map(([v,l])=>el("div",{class:"tile"},el("b",null,v),el("span",null,l))));
+  // by hotel
+  const by=new Map();rows.forEach(r=>{if(!by.has(r.hotel_code))by.set(r.hotel_code,[]);by.get(r.hotel_code).push(r);});
+  const hs=[...by.entries()].map(([c,rs])=>({c,n:rs.length,s:sum(rs,"sent"),r:sum(rs,"reads"),k:sum(rs,"unique_clicks")})).sort((a,b)=>(rate(b.k,b.s)||0)-(rate(a.k,a.s)||0)||a.c.localeCompare(b.c));
+  const empty=(n,t)=>[el("tr",null,el("td",{colspan:String(n),class:"empty"},t))];
+  const none=reports.size?"No report in this period.":"No reports yet. They appear here once hotels send them.";
+  F("rp-hotels").replaceChildren(...(hs.length?hs.map(x=>{const h=HOTEL[x.c];return el("tr",null,el("td",null,el("div",null,h?h.name:x.c),el("div",{class:"code",style:"color:var(--muted)"},x.c)),
+    el("td",{class:"num"},x.n),el("td",{class:"num"},fmtN(x.s)),el("td",{class:"num"},fmtN(x.r)),el("td",{class:"num"},fmtN(x.k)),el("td",{class:"num"},fmtPct(rate(x.r,x.s))),el("td",{class:"num"},fmtPct(rate(x.k,x.s))));}):empty(7,none)));
+  // by EDM
+  F("rp-edms").replaceChildren(...(rows.length?rows.map(r=>{const h=HOTEL[r.hotel_code];const live=subs.has(r.ticket_id);
+    return el("tr",live?{class:"click",tabindex:"0",onclick:()=>openDetail(r.ticket_id),onkeydown:e=>{if(e.key==="Enter")openDetail(r.ticket_id);}}:null,
+      el("td",{class:"ticket"},r.ticket||"—"),el("td",null,el("div",null,h?h.name:r.hotel_code),el("div",{class:"code",style:"color:var(--muted)"},r.hotel_code)),el("td",null,r.campaign||"—"),el("td",{class:"code"},fmtDay(r.start_at)),
+      el("td",{class:"num"},fmtN(r.sent)),el("td",{class:"num"},fmtN(r.reads)),el("td",{class:"num"},fmtN(r.unique_clicks)),el("td",{class:"num"},fmtPct(rate(r.reads,r.sent))),el("td",{class:"num"},fmtPct(rate(r.unique_clicks,r.sent))),
+      el("td",{style:"font-size:12px;color:var(--muted)"},nameOf(r.reported_email),el("div",null,fmtWhen(r.updated_at||r.reported_at))));}):empty(10,none)));
+}
+F("rp-csv").addEventListener("click",()=>{const rows=reportRows();if(!rows.length){toast("No report in this period.");return;}
+  const q=v=>{const t=String(v==null?"":v);return/[",\n]/.test(t)?`"${t.replace(/"/g,'""')}"`:t;};
+  const lines=[["Ticket","Hotel code","Hotel","Campaign","Send date","Sent","Read","Unique clicks","Read rate %","Click rate %","Reported by","Reported at"].join(",")]
+    .concat(rows.map(r=>[r.ticket,r.hotel_code,(HOTEL[r.hotel_code]||{}).name,r.campaign,(r.start_at||"").slice(0,10),r.sent,r.reads,r.unique_clicks,(rate(r.reads,r.sent)||0).toFixed(2),(rate(r.unique_clicks,r.sent)||0).toFixed(2),r.reported_email,r.updated_at||r.reported_at].map(q).join(",")));
+  const a=el("a",{href:URL.createObjectURL(new Blob(["﻿"+lines.join("\r\n")],{type:"text/csv"})),download:`edm-reports-${F("rp-from").value}-to-${F("rp-to").value}.csv`});document.body.append(a);a.click();a.remove();});
 
 /* ---------- access (reviewers): which email can submit for which hotel ---------- */
 async function loadMyHotels(){if(!db||!session){myHotels=[];return;}
@@ -917,8 +1007,8 @@ F("swatches").append(...Object.values(BRANDS).map(b=>el("div",null,el("span",{cl
 /* ---------- views ---------- */
 /* Each tab has its own address: /submit, /tickets, /overview, /guidelines.
    A single ticket opens at /tickets/<ticket number>. Old #hash links still work. */
-const PATHS={submit:"/submit",queue:"/tickets",overview:"/overview",guide:"/guidelines",access:"/access"};
-const VIEW_OF={"submit":"submit","tickets":"queue","overview":"overview","guidelines":"guide","queue":"queue","guide":"guide","access":"access"};
+const PATHS={submit:"/submit",queue:"/tickets",overview:"/overview",reports:"/reports",guide:"/guidelines",access:"/access"};
+const VIEW_OF={"submit":"submit","tickets":"queue","overview":"overview","reports":"reports","guidelines":"guide","queue":"queue","guide":"guide","access":"access"};
 function setPath(path,replace){if(location.pathname===path)return;try{history[replace?"replaceState":"pushState"]({},"",path);}catch(e){}}
 function ticketPath(id){const s=subs.get(id);return "/tickets/"+encodeURIComponent((s&&s.ticket)||id);}
 function parsePath(){const seg=location.pathname.replace(/^\/+|\/+$/g,"").split("/");const hash=(location.hash||"").slice(1);
@@ -931,17 +1021,17 @@ function routeFromAddress(){const r=parsePath();switchView(r.view,{fromAddress:t
   if(r.ticket){pendingTicket=r.ticket;openPendingTicket();}else if(openId){openId=null;$("#overlay").hidden=true;}}
 window.addEventListener("popstate",routeFromAddress);
 function switchView(v,opts){opts=opts||{};if(v==="access"&&session&&!isApprover)v="queue";currentView=v;
-  if(session&&!opts.fromAddress)setPath(PATHS[v]);else if(session&&location.pathname!==PATHS[v]&&!/^\/tickets\/./.test(location.pathname))setPath(PATHS[v],true);document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.view===v?"true":"false"));["submit","queue","overview","guide","access"].forEach(k=>F("view-"+k).hidden=k!==v);if(v==="queue")renderQueue();if(v==="overview")renderOverview();if(v==="access")renderAccess(true);window.scrollTo(0,0);}
+  if(session&&!opts.fromAddress)setPath(PATHS[v]);else if(session&&location.pathname!==PATHS[v]&&!/^\/tickets\/./.test(location.pathname))setPath(PATHS[v],true);document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.view===v?"true":"false"));["submit","queue","overview","reports","guide","access"].forEach(k=>F("view-"+k).hidden=k!==v);if(v==="queue")renderQueue();if(v==="overview")renderOverview();if(v==="reports")renderReports();if(v==="access")renderAccess(true);window.scrollTo(0,0);}
 document.querySelectorAll("nav.tabs button").forEach(b=>b.addEventListener("click",()=>switchView(b.dataset.view)));
 {const r=parsePath();currentView=r.view;pendingTicket=r.ticket;}
 
-function renderAll(){refresh();renderQueue();if(!F("view-overview").hidden)renderOverview();if(openId&&detailSignature(openId)!==detailSig)renderDetail();}
+function renderAll(){refresh();renderQueue();renderReportBadge();if(!F("view-overview").hidden)renderOverview();if(!F("view-reports").hidden)renderReports();if(openId&&detailSignature(openId)!==detailSig)renderDetail();}
 refresh();renderQueue();
 
 /* ---------- sign in (magic link) ---------- */
 function setSignedIn(on){
   F("view-login").hidden=on;document.querySelector("nav.tabs").hidden=!on;
-  if(on)switchView(currentView||"submit",{fromAddress:true});else{["submit","queue","overview","guide","access"].forEach(k=>F("view-"+k).hidden=true);closeDetail();}
+  if(on)switchView(currentView||"submit",{fromAddress:true});else{["submit","queue","overview","reports","guide","access"].forEach(k=>F("view-"+k).hidden=true);closeDetail();}
 }
 function renderWho(){const w=$("#who");w.replaceChildren();
   if(!session){w.textContent=db?"Signed out":"";return;}
@@ -996,7 +1086,7 @@ F("pw-form").addEventListener("submit",async e=>{e.preventDefault();const a=F("p
 let lastUser;
 async function onSession(s){
   session=s;const uid=s?s.user.id:null;if(uid===lastUser){renderWho();return;}lastUser=uid;
-  if(!s){myId=null;myEmail="";isApprover=false;isAdmin=false;myHotels=[];subs=new Map();decisions=new Map();fullCache.clear();renderWho();setSignedIn(false);return;}
+  if(!s){myId=null;myEmail="";isApprover=false;isAdmin=false;myHotels=[];subs=new Map();decisions=new Map();reports=new Map();fullCache.clear();renderWho();setSignedIn(false);return;}
   myId=s.user.id;myEmail=s.user.email||"";
   const[{data:rv},{data:ad}]=await Promise.all([db.rpc("is_reviewer"),db.rpc("is_admin")]);isApprover=!!rv;isAdmin=!!(rv&&ad);
   F("tab-overview").hidden=false; /* hotels see a version limited to their own hotel */

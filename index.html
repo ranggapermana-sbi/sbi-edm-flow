@@ -53,7 +53,7 @@ legend{font-weight:600;padding:0 6px;font-size:13px;letter-spacing:.06em;text-tr
 .full{grid-column:1/-1}
 label.f{display:flex;flex-direction:column;gap:5px;font-weight:500;font-size:13px;min-width:0}
 label.f .hint{font-weight:400;color:var(--muted);font-size:12px}
-input[type=text],input[type=email],input[type=password],input[type=url],input[type=datetime-local],input[type=month],input[type=search],select,textarea{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:8px 10px;width:100%;min-width:0}
+input[type=text],input[type=email],input[type=password],input[type=url],input[type=datetime-local],input[type=month],input[type=number],input[type=search],select,textarea{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:8px 10px;width:100%;min-width:0}
 textarea{min-height:110px;resize:vertical;font-family:var(--mono);font-size:12px}
 textarea.plain{font-family:var(--sans);font-size:14px;min-height:70px}
 .expect{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
@@ -133,6 +133,15 @@ tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--soft)}
 .btn.danger{border-color:var(--bad);color:var(--bad)}
 .danger-zone{border-color:var(--bad)}
 .danger-zone h3{color:var(--bad)}
+.tab-badge{display:inline-block;min-width:18px;margin-left:6px;padding:1px 5px;border-radius:999px;background:var(--bad);color:#fff;font-size:11px;font-weight:700;line-height:16px;text-align:center}
+.rp-h{font-family:var(--serif);font-style:italic;font-weight:400;color:var(--title);font-size:20px;margin:24px 0 10px}
+.rp-due{border-color:var(--warn,#d99a00)}
+.rpt-rates{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.rpt-rates div{background:var(--soft);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--muted)}
+.rpt-rates b{display:block;font-size:20px;color:var(--ink);font-variant-numeric:tabular-nums}
+.rep-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-top:8px}
+.rep-grid div{background:var(--soft);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--muted)}
+.rep-grid b{display:block;font-size:18px;color:var(--ink);font-variant-numeric:tabular-nums}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px}
 .tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
 .tile b{display:block;font-size:28px;font-variant-numeric:tabular-nums;line-height:1.2}
@@ -195,6 +204,7 @@ dialog.pw form{display:flex;flex-direction:column;gap:12px}
       <button role="tab" id="tab-submit" aria-selected="true" data-view="submit">Submit EDM</button>
       <button role="tab" id="tab-queue" aria-selected="false" data-view="queue">Tickets</button>
       <button role="tab" id="tab-overview" aria-selected="false" data-view="overview">Overview</button>
+      <button role="tab" id="tab-reports" aria-selected="false" data-view="reports">Reports<span class="tab-badge" id="tab-reports-n" hidden></span></button>
       <button role="tab" id="tab-guide" aria-selected="false" data-view="guide">Guidelines</button>
       <button role="tab" id="tab-access" aria-selected="false" data-view="access" hidden>Access</button>
     </nav>
@@ -411,6 +421,51 @@ dialog.pw form{display:flex;flex-direction:column;gap:12px}
     </table></div>
     <details class="sec" id="o-missing-box"><summary id="o-missing-sum"></summary><p id="o-missing" class="code"></p></details>
   </section>
+
+  <!-- REPORTS -->
+  <section id="view-reports" hidden>
+    <h1>Reports</h1>
+    <p class="lede" id="rp-lede">Two weeks after a scheduled EDM starts sending, the hotel enters three numbers from Whizzmailer: sent, read and unique clicks. The rates are calculated here: read rate = read ÷ sent, click rate = unique clicks ÷ sent. Totals add up every EDM, so bigger sends count more.</p>
+    <div class="banner" id="rp-missing" hidden>Reports are not set up in the database yet. A super admin needs to run the latest supabase/schema.sql once in the Supabase SQL Editor.</div>
+    <div class="sec rp-due" id="rp-due-box" hidden>
+      <h3 id="rp-due-title" style="margin:0 0 4px"></h3>
+      <p id="rp-due-lede" style="margin:0 0 10px;font-size:13px;color:var(--muted)"></p>
+      <div class="tablebox"><table>
+        <thead><tr><th>Ticket</th><th>Hotel</th><th>Campaign</th><th>Send date</th><th>Report open since</th><th></th></tr></thead>
+        <tbody id="rp-due"></tbody>
+      </table></div>
+    </div>
+    <div class="toolbar">
+      <label class="brandchip">From <input type="month" id="rp-from"></label>
+      <label class="brandchip">To <input type="month" id="rp-to"></label>
+      <select id="rp-hotel" style="max-width:280px" aria-label="Hotel"></select>
+      <button type="button" class="btn small" id="rp-csv">Download CSV</button>
+    </div>
+    <div class="tiles" id="rp-tiles"></div>
+    <h2 class="rp-h">By hotel</h2>
+    <div class="tablebox"><table>
+      <thead><tr><th>Hotel</th><th class="num">EDMs</th><th class="num">Sent</th><th class="num">Read</th><th class="num">Unique clicks</th><th class="num">Read rate</th><th class="num">Click rate</th></tr></thead>
+      <tbody id="rp-hotels"></tbody>
+    </table></div>
+    <h2 class="rp-h">By EDM</h2>
+    <div class="tablebox"><table>
+      <thead><tr><th>Ticket</th><th>Hotel</th><th>Campaign</th><th>Send date</th><th class="num">Sent</th><th class="num">Read</th><th class="num">Unique clicks</th><th class="num">Read rate</th><th class="num">Click rate</th><th>Reported</th></tr></thead>
+      <tbody id="rp-edms"></tbody>
+    </table></div>
+  </section>
+
+  <dialog class="pw" id="rpt-dialog" aria-labelledby="rpt-title">
+    <form id="rpt-form" novalidate>
+      <h3 id="rpt-title" style="margin:0">EDM report</h3>
+      <p id="rpt-who" style="margin:0;font-size:13px;color:var(--muted)"></p>
+      <label class="f">Sent <input type="number" id="rpt-sent" min="1" step="1" inputmode="numeric" required></label>
+      <label class="f">Read <input type="number" id="rpt-read" min="0" step="1" inputmode="numeric" required></label>
+      <label class="f">Unique clicks <input type="number" id="rpt-clicks" min="0" step="1" inputmode="numeric" required></label>
+      <div class="rpt-rates" id="rpt-rates"></div>
+      <p id="rpt-msg" style="margin:0;font-size:13px;color:var(--bad)"></p>
+      <div class="btnrow"><button type="submit" class="btn primary" id="rpt-save">Send report</button><button type="button" class="btn" id="rpt-cancel">Cancel</button></div>
+    </form>
+  </dialog>
 
   <!-- GUIDE -->
   <!-- ACCESS (reviewers only) -->
