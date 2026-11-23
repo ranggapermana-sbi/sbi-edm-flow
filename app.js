@@ -899,7 +899,8 @@ const FIELD_HELP={
   "f-from":["from","Advanced → From name. Use the complete hotel name."],
   "f-replyto":["replyto","Advanced → Reply to address. The hotel's reservations or department email."],
   "f-preview":["preview","Preview → turn on the Preview URL toggle, then double-click the URL to copy it."],
-  "f-shots":["fullpage","Install the free GoFullPage extension once. Then open the Preview URL, click the camera icon (or Alt+Shift+P), wait for the capture and click Download PNG.","wide"]};
+  "f-shots":["fullpage","Install the free GoFullPage extension once. Then open the Preview URL, click the camera icon (or Alt+Shift+P), wait for the capture and click Download PNG.","wide"],
+  "f-html":["html","Builder → pencil icon (Edit code) → Ctrl+A, Ctrl+C → paste the whole code here. Then close the editor with Cancel so nothing in the email changes.","wide"]};
 function addFieldHelp(){Object.entries(FIELD_HELP).forEach(([id,[img,cap,size]])=>{const inp=F(id);const lab=inp&&inp.closest("label");if(!lab||lab.querySelector(".tip"))return;
   const tip=el("span",{class:"tip",tabindex:"0",role:"button","aria-label":"Where to find this in Whizzmailer","aria-expanded":"false"},"i",
     el("span",{class:size?`tip-pop ${size}`:"tip-pop",role:"tooltip"},el("img",{src:`/img/help/${img}.png?v=2`,alt:`Help screenshot: ${cap}`,loading:"lazy"}),el("span",null,cap)));
