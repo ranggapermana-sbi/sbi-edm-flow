@@ -90,7 +90,7 @@ Setelah diisi, lakukan **Redeploy**. Hasil setiap pembersihan bisa dilihat di Ve
 - 14 hari setelah tanggal kirim (Start sending at) sebuah tiket berstatus **Scheduled**, muncul tag **Report due** di Tickets, tombol **Fill in the report** di tiket, dan angka merah di menu Reports untuk akun hotel.
 - Hotel mengisi 3 angka dari report Whizzmailer: **Sent**, **Read**, **Unique clicks**. Portal menghitung **Read rate = Read ÷ Sent** dan **Click rate = Unique clicks ÷ Sent**. Read dan unique clicks tidak boleh lebih dari sent.
 - Angka bisa dikoreksi selama tiketnya masih ada. Semua PIC hotel yang sama dan reviewer bisa mengisi/mengoreksi.
-- Halaman Reports: daftar report yang belum diisi, total (rate dihitung dari jumlah total, bukan rata-rata per EDM), tabel per hotel, tabel per EDM, filter bulan kirim & hotel, dan Download CSV.
+- Halaman Reports: daftar report yang belum diisi, total (rate dihitung dari jumlah total, bukan rata-rata per EDM), tabel per hotel, tabel per EDM, filter bulan kirim & hotel, dan Download Excel (.xlsx: sheet Summary, By hotel, By EDM, plus Missing reports kalau ada).
 - Report disimpan di tabel `edm_reports` dengan salinan hotel, campaign dan tanggal kirim, jadi **tidak ikut terhapus** oleh pembersihan otomatis 3 bulan. Ukurannya sangat kecil. Super admin yang menghapus tiket juga menghapus report-nya.
 - Aturan (hanya tiket Scheduled, minimal 14 hari setelah kirim, angka valid, hanya hotelnya sendiri) dijaga oleh fungsi database `submit_report`.
 

@@ -856,11 +856,77 @@ function renderReports(){
       el("td",{class:"num"},fmtN(r.sent)),el("td",{class:"num"},fmtN(r.reads)),el("td",{class:"num"},fmtN(r.unique_clicks)),el("td",{class:"num"},fmtPct(rate(r.reads,r.sent))),el("td",{class:"num"},fmtPct(rate(r.unique_clicks,r.sent))),
       el("td",{style:"font-size:12px;color:var(--muted)"},nameOf(r.reported_email),el("div",null,fmtWhen(r.updated_at||r.reported_at))));}):empty(10,none)));
 }
-F("rp-csv").addEventListener("click",()=>{const rows=reportRows();if(!rows.length){toast("No report in this period.");return;}
-  const q=v=>{const t=String(v==null?"":v);return/[",\n]/.test(t)?`"${t.replace(/"/g,'""')}"`:t;};
-  const lines=[["Ticket","Hotel code","Hotel","Campaign","Send date","Sent","Read","Unique clicks","Read rate %","Click rate %","Reported by","Reported at"].join(",")]
-    .concat(rows.map(r=>[r.ticket,r.hotel_code,(HOTEL[r.hotel_code]||{}).name,r.campaign,(r.start_at||"").slice(0,10),r.sent,r.reads,r.unique_clicks,(rate(r.reads,r.sent)||0).toFixed(2),(rate(r.unique_clicks,r.sent)||0).toFixed(2),r.reported_email,r.updated_at||r.reported_at].map(q).join(",")));
-  const a=el("a",{href:URL.createObjectURL(new Blob(["﻿"+lines.join("\r\n")],{type:"text/csv"})),download:`edm-reports-${F("rp-from").value}-to-${F("rp-to").value}.csv`});document.body.append(a);a.click();a.remove();});
+/* Excel download. A small .xlsx writer (no library, nothing loaded from outside): inline strings,
+   number/percent/date formats, and formulas with their values filled in, so Excel shows them at once. */
+const XL=(()=>{
+  const T=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;T[n]=c>>>0;}
+  const crc=b=>{let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=T[(c^b[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0;};
+  function zip(files){const enc=new TextEncoder();const parts=[],cd=[];let off=0;
+    for(const[name,str]of files){const n=enc.encode(name),d=enc.encode(str),c=crc(d);
+      const h=new DataView(new ArrayBuffer(30));[[0,0x04034b50,4],[4,20,2],[6,0x0800,2],[12,0x21,2],[14,c,4],[18,d.length,4],[22,d.length,4],[26,n.length,2]].forEach(([o,v,z])=>z===4?h.setUint32(o,v,true):h.setUint16(o,v,true));
+      const e=new DataView(new ArrayBuffer(46));[[0,0x02014b50,4],[4,20,2],[6,20,2],[8,0x0800,2],[14,0x21,2],[16,c,4],[20,d.length,4],[24,d.length,4],[28,n.length,2],[42,off,4]].forEach(([o,v,z])=>z===4?e.setUint32(o,v,true):e.setUint16(o,v,true));
+      parts.push(new Uint8Array(h.buffer),n,d);cd.push(new Uint8Array(e.buffer),n);off+=30+n.length+d.length;}
+    const len=cd.reduce((a,b)=>a+b.length,0);const z=new DataView(new ArrayBuffer(22));z.setUint32(0,0x06054b50,true);z.setUint16(8,files.length,true);z.setUint16(10,files.length,true);z.setUint32(12,len,true);z.setUint32(16,off,true);
+    return new Blob([...parts,...cd,new Uint8Array(z.buffer)],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});}
+  const esc=v=>String(v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const col=i=>{let s="";i++;while(i){const m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=(i-m-1)/26;}return s;};
+  function sheet(sh){const rows=sh.rows.map((r,ri)=>`<row r="${ri+1}">`+r.map((c,ci)=>{if(c==null||c==="")return"";const o=typeof c==="object"?c:{v:c};const ref=col(ci)+(ri+1);const st=o.s?` s="${o.s}"`:"";
+      if(o.f!=null)return`<c r="${ref}"${st}><f>${esc(o.f)}</f>${typeof o.v==="number"&&isFinite(o.v)?`<v>${o.v}</v>`:""}</c>`;
+      if(typeof o.v==="number")return isFinite(o.v)?`<c r="${ref}"${st}><v>${o.v}</v></c>`:"";
+      if(o.v==null||o.v==="")return o.s?`<c r="${ref}"${st}/>`:"";
+      return`<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${esc(o.v)}</t></is></c>`;}).join("")+"</row>").join("");
+    const pane=sh.freeze?`<sheetViews><sheetView workbookViewId="0"><pane ySplit="${sh.freeze}" topLeftCell="A${sh.freeze+1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`:"";
+    const cols=sh.cols?`<cols>${sh.cols.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join("")}</cols>`:"";
+    return`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${pane}${cols}<sheetData>${rows}</sheetData>${sh.filter?`<autoFilter ref="${sh.filter}"/>`:""}</worksheet>`;}
+  const NS='xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+  const xf=(n,f,fill,b)=>`<xf numFmtId="${n}" fontId="${f}" fillId="${fill}" borderId="${b}" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>`;
+  /* styles: 1 header, 2 whole number, 3 percent, 4 date, 5 title, 6 date+time, 7 bold number, 8 bold percent, 9 bold text, 10 note */
+  const STYLES=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet ${NS}><numFmts count="3"><numFmt numFmtId="164" formatCode="0.0%"/><numFmt numFmtId="165" formatCode="d mmm yyyy"/><numFmt numFmtId="166" formatCode="d mmm yyyy hh:mm"/></numFmts>`+
+    `<fonts count="4"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><name val="Calibri"/></font><font><i/><sz val="10"/><color rgb="FF666666"/><name val="Calibri"/></font></fonts>`+
+    `<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEFEDE6"/><bgColor indexed="64"/></patternFill></fill></fills>`+
+    `<borders count="3"><border><left/><right/><top/><bottom/><diagonal/></border><border><left/><right/><top/><bottom style="thin"><color rgb="FF999999"/></bottom><diagonal/></border><border><left/><right/><top style="thin"><color rgb="FF999999"/></top><bottom/><diagonal/></border></borders>`+
+    `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="11">${xf(0,0,0,0)}${xf(0,1,2,1)}${xf(3,0,0,0)}${xf(164,0,0,0)}${xf(165,0,0,0)}${xf(0,2,0,0)}${xf(166,0,0,0)}${xf(3,1,0,2)}${xf(164,1,0,2)}${xf(0,1,0,2)}${xf(0,3,0,0)}</cellXfs>`+
+    `<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+  function book(sheets){const R='xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+    return zip([["[Content_Types].xml",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}</Types>`],
+      ["_rels/.rels",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+      ["xl/workbook.xml",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook ${NS} ${R}><sheets>${sheets.map((s,i)=>`<sheet name="${esc(s.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join("")}</sheets>${sheets.some(s=>s.filter)?`<definedNames>${sheets.map((s,i)=>s.filter?`<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">'${esc(s.name)}'!$${s.filter.replace(/(\d+)/g,"$$$1").replace(":",":$")}</definedName>`:"").join("")}</definedNames>`:""}<calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>`],
+      ["xl/_rels/workbook.xml.rels",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join("")}<Relationship Id="rId${sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+      ["xl/styles.xml",STYLES],...sheets.map((s,i)=>[`xl/worksheets/sheet${i+1}.xml`,sheet(s)])]);}
+  return{book,col};
+})();
+/* Excel date serials, Jakarta time */
+const xlDay=s=>{if(!s)return"";const[y,m,d]=s.slice(0,10).split("-").map(Number);return Date.UTC(y,m-1,d)/864e5+25569;};
+const xlTime=iso=>iso?(Date.parse(iso)+7*3600e3)/864e5+25569:"";
+F("rp-xlsx").addEventListener("click",()=>{const rows=reportRows();if(!rows.length){toast("No report in this period.");return;}
+  const from=F("rp-from").value,to=F("rp-to").value,hc=F("rp-hotel").value;const hn=c=>(HOTEL[c]||{}).name||c;
+  const sum=k=>rows.reduce((t,r)=>t+(+r[k]||0),0);const S=sum("sent"),R=sum("reads"),C=sum("unique_clicks");const N=rows.length,last=N+1;
+  const H={v:"",s:1};const hd=a=>a.map(v=>({v,s:1}));
+  // By EDM
+  const edm={name:"By EDM",freeze:1,filter:`A1:L${last}`,cols:[20,11,36,32,13,11,11,14,11,11,30,18],
+    rows:[hd(["Ticket","Hotel code","Hotel","Campaign","Send date","Sent","Read","Unique clicks","Read rate","Click rate","Reported by","Reported at"])].concat(rows.map((r,i)=>{const n=i+2;
+      return[r.ticket||"",r.hotel_code,hn(r.hotel_code),r.campaign||"",{v:xlDay(r.start_at),s:4},{v:+r.sent,s:2},{v:+r.reads,s:2},{v:+r.unique_clicks,s:2},
+        {f:`IF(F${n}>0,G${n}/F${n},"")`,v:r.sent?r.reads/r.sent:"",s:3},{f:`IF(F${n}>0,H${n}/F${n},"")`,v:r.sent?r.unique_clicks/r.sent:"",s:3},r.reported_email||"",{v:xlTime(r.updated_at||r.reported_at),s:6}];}))};
+  // By hotel (rows reference the By EDM sheet, so edits there flow through)
+  const by=new Map();rows.forEach(r=>{if(!by.has(r.hotel_code))by.set(r.hotel_code,[]);by.get(r.hotel_code).push(r);});
+  const hs=[...by.entries()].map(([c,rs])=>({c,n:rs.length,s:rs.reduce((t,r)=>t+ +r.sent,0),r:rs.reduce((t,r)=>t+ +r.reads,0),k:rs.reduce((t,r)=>t+ +r.unique_clicks,0)})).sort((a,b)=>(b.k/b.s)-(a.k/a.s)||a.c.localeCompare(b.c));
+  const rng=l=>`'By EDM'!$${l}$2:$${l}$${last}`;const hl=hs.length+1;
+  const hotel={name:"By hotel",freeze:1,filter:`A1:H${hl}`,cols:[11,40,8,12,12,14,11,11],
+    rows:[hd(["Hotel code","Hotel","EDMs","Sent","Read","Unique clicks","Read rate","Click rate"])].concat(hs.map((x,i)=>{const n=i+2;
+      return[x.c,hn(x.c),{f:`COUNTIF(${rng("B")},A${n})`,v:x.n,s:2},{f:`SUMIF(${rng("B")},A${n},${rng("F")})`,v:x.s,s:2},{f:`SUMIF(${rng("B")},A${n},${rng("G")})`,v:x.r,s:2},{f:`SUMIF(${rng("B")},A${n},${rng("H")})`,v:x.k,s:2},
+        {f:`IF(D${n}>0,E${n}/D${n},"")`,v:x.r/x.s,s:3},{f:`IF(D${n}>0,F${n}/D${n},"")`,v:x.k/x.s,s:3}];}),
+      [[{v:"Total",s:9},{v:"",s:9},{f:`SUM(C2:C${hl})`,v:N,s:7},{f:`SUM(D2:D${hl})`,v:S,s:7},{f:`SUM(E2:E${hl})`,v:R,s:7},{f:`SUM(F2:F${hl})`,v:C,s:7},{f:`IF(D${hl+1}>0,E${hl+1}/D${hl+1},"")`,v:R/S,s:8},{f:`IF(D${hl+1}>0,F${hl+1}/D${hl+1},"")`,v:C/S,s:8}]])};
+  hotel.filter=`A1:H${hl}`;
+  // Summary
+  const period=`${from?fmtDay(from+"-01").replace(/^1 /,""):"…"} to ${to?fmtDay(to+"-01").replace(/^1 /,""):"…"}`;
+  const summary={name:"Summary",cols:[26,22],rows:[[{v:"SBI EDM performance report",s:5}],["Send month",period],["Hotel",hc?`${hn(hc)} (${hc})`:(isApprover?"All hotels":"All my hotels")],["Downloaded",{v:xlTime(nowIso()),s:6}],[],hd(["Measure","Value"]),
+    ["EDMs reported",{f:`COUNTA(${rng("A")})`,v:N,s:2}],["Emails sent",{f:`SUM(${rng("F")})`,v:S,s:2}],["Read",{f:`SUM(${rng("G")})`,v:R,s:2}],["Unique clicks",{f:`SUM(${rng("H")})`,v:C,s:2}],
+    [{v:"Read rate",s:9},{f:`IF(B8>0,B9/B8,"")`,v:S?R/S:"",s:8}],[{v:"Click rate",s:9},{f:`IF(B8>0,B10/B8,"")`,v:S?C/S:"",s:8}],[],
+    [{v:"Read rate = Read ÷ Sent. Click rate = Unique clicks ÷ Sent. Totals add up every EDM before dividing, so bigger sends count more.",s:10}]]};
+  const sheets=[summary,hotel,edm];
+  const due=dueList().filter(id=>!hc||subs.get(id).hotelCode===hc);
+  if(due.length)sheets.push({name:"Missing reports",freeze:1,cols:[20,11,36,32,13,18],rows:[hd(["Ticket","Hotel code","Hotel","Campaign","Send date","Report open since"])].concat(due.map(id=>{const s=subs.get(id);return[s.ticket||"",s.hotelCode,hn(s.hotelCode),s.campaign||"",{v:xlDay(s.start),s:4},{v:xlDay(reportOpens(id)),s:4}];}))});
+  const a=el("a",{href:URL.createObjectURL(XL.book(sheets)),download:`SBI EDM report ${from||"start"} to ${to||"now"}${hc?" "+hc:""}.xlsx`});document.body.append(a);a.click();a.remove();});
 
 /* ---------- access (reviewers): which email can submit for which hotel ---------- */
 async function loadMyHotels(){if(!db||!session){myHotels=[];return;}
