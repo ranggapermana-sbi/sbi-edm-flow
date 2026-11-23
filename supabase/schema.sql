@@ -623,9 +623,9 @@ on conflict do nothing;
 --    delete from public.reviewers where email = 'name@swiss-belhotel.com';
 -- ============================================================
 -- insert into public.reviewers (email) values
---   ('digitalmarketingmgr2@swiss-belhotel.com')
+--   ('santasihombing@swiss-belhotel.com')
 -- on conflict do nothing;
 --
 -- After that, reviewers are managed on the portal's Access page by a super admin.
 -- Make the first super admin (only needed once):
--- update public.reviewers set role = 'admin' where email = 'digitalmarketingmgr2@swiss-belhotel.com';
+-- update public.reviewers set role = 'admin' where email = 'santasihombing@swiss-belhotel.com';
