@@ -132,7 +132,6 @@ const HOTELS=HOTEL_ROWS.split("\n").map(l=>{const[code,name,brand]=l.split("|").
 const HOTEL=Object.fromEntries(HOTELS.map(h=>[h.code,h]));
 
 const MANUAL=[{sec:"",items:[
- ["C5","Main offer is taken from the hotel's offer on swiss-belhotel.com, and its image and button link there"],
  ["C6",f=>`Main offer image alt text is the promotion name${(f.campaign||"").trim()?`: "${f.campaign.trim()}"`:""}`],
  ["C7",f=>{const e=expInternal(f.hotelCode,f.start);return`Internal name in Whizzmailer is exactly ${e?`"${e}"`:"[HOTEL CODE] - DD Mon YYYY (choose the start date first)"}`;}],
  ["C8",f=>{const e=expUtm(f.hotelCode,f.start);return`UTM campaign name in Whizzmailer is exactly ${e?`"${e}"`:"whizz-edm-[HOTEL CODE]-DDMonYYYY (choose the start date first)"}`;}],
