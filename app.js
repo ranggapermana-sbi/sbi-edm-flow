@@ -887,6 +887,28 @@ function renderAccounts(){F("acc-box").hidden=!isAdmin;if(!isAdmin)return;
         me?null:a.blocked?el("button",{type:"button",class:"btn small",onclick:()=>setBlocked(a,false)},"Unblock"):confirmButton("Block",()=>setBlocked(a,true))));})
     :[el("tr",null,el("td",{colspan:"6",class:"empty"},accounts.length?"No match.":"No accounts yet."))]));}
 
+/* Where-to-find-it help: an (i) next to a field label shows the matching Whizzmailer screenshot from
+   the EDM Template Guidelines 2026. Hover or keyboard focus shows it; a tap toggles it on phones. */
+const FIELD_HELP={
+  "f-subject":["subject","Whizzmailer → Delivery setting → Subject (1)."],
+  "f-preheader":["preheader","Whizzmailer → Delivery setting → Preheader Text (3)."],
+  "f-start":["start","Delivery setting → Start sending at (10). Turn on Available for use (9) first."],
+  "f-stop":["stop","Delivery setting → Stop sending at (11). At most 5 days after the start."],
+  "f-internal":["internal","Delivery setting → Internal Name (2). Format: [HOTEL CODE] - DD Mon YYYY."],
+  "f-utm":["utm","Delivery setting → UTM tags → Campaign name (12). Do not change source (10) and medium (11)."],
+  "f-from":["from","Advanced → From name (1). Use the complete hotel name."],
+  "f-replyto":["replyto","Advanced → Reply to address (3). The hotel's reservations or department email."],
+  "f-preview":["preview","Preview → toggle Preview URL on (1), then double-click the URL to copy it (2)."]};
+function addFieldHelp(){Object.entries(FIELD_HELP).forEach(([id,[img,cap]])=>{const inp=F(id);const lab=inp&&inp.closest("label");if(!lab||lab.querySelector(".tip"))return;
+  const tip=el("span",{class:"tip",tabindex:"0",role:"button","aria-label":"Where to find this in Whizzmailer","aria-expanded":"false"},"i",
+    el("span",{class:"tip-pop",role:"tooltip"},el("img",{src:`/img/help/${img}.png`,alt:`Whizzmailer screenshot: ${cap}`,loading:"lazy"}),el("span",null,cap)));
+  const toggle=e=>{e.preventDefault();e.stopPropagation();const on=!tip.classList.contains("open");document.querySelectorAll(".tip.open").forEach(t=>{t.classList.remove("open");t.setAttribute("aria-expanded","false");});if(on){tip.classList.add("open");tip.setAttribute("aria-expanded","true");}};
+  tip.addEventListener("click",toggle);tip.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" ")toggle(e);if(e.key==="Escape"){tip.classList.remove("open");tip.blur();}});
+  const first=[...lab.childNodes].find(n=>n.nodeType===3&&n.textContent.trim());
+  if(first){const head=el("span",{class:"f-head"},first.textContent.trim());first.replaceWith(head);head.append(tip);}else lab.prepend(tip);});
+  document.addEventListener("click",e=>{if(!e.target.closest(".tip"))document.querySelectorAll(".tip.open").forEach(t=>{t.classList.remove("open");t.setAttribute("aria-expanded","false");});});}
+addFieldHelp();
+
 /* ---------- guide ---------- */
 F("swatches").append(...Object.values(BRANDS).map(b=>el("div",null,el("span",{class:"sw",style:"background:"+b.hex}),b.name,el("span",{class:"code",style:"color:var(--muted)"},b.hex))));
 
