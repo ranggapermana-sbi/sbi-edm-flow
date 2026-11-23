@@ -132,12 +132,17 @@ const HOTELS=HOTEL_ROWS.split("\n").map(l=>{const[code,name,brand]=l.split("|").
 const HOTEL=Object.fromEntries(HOTELS.map(h=>[h.code,h]));
 
 const MANUAL=[{sec:"",items:[
+ ["C5","Main offer is taken from the hotel's offer on swiss-belhotel.com, and its image and button link there"],
+ ["C6",f=>`Main offer image alt text is the promotion name${(f.campaign||"").trim()?`: "${f.campaign.trim()}"`:""}`],
+ ["C7",f=>{const e=expInternal(f.hotelCode,f.start);return`Internal name in Whizzmailer is exactly ${e?`"${e}"`:"[HOTEL CODE] - DD Mon YYYY (choose the start date first)"}`;}],
+ ["C8",f=>{const e=expUtm(f.hotelCode,f.start);return`UTM campaign name in Whizzmailer is exactly ${e?`"${e}"`:"whizz-edm-[HOTEL CODE]-DDMonYYYY (choose the start date first)"}`;}],
  ["C1","Hero and offer images are HD (sharp, readable text on the visuals)"],
  ["C2","Footer banner is the latest version from Group Marcomm"],
  ["C3","Hotel address and local phone number in the footer are correct"],
  ["C4","Test email sent with Send Example and every link opens the right page"]
 ]}];
 const MANUAL_IDS=MANUAL.flatMap(g=>g.items.map(i=>i[0]));
+const manualText=(t,f)=>typeof t==="function"?t(f||{}):t;
 const OFFER_LABEL={room:"Room package",fnb:"F&B package",social:"Social event",meeting:"Meeting package"};
 const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
@@ -178,12 +183,12 @@ document.body.append(checkFrame);
 let htmlCache={key:null,result:null,pendingKey:null};
 function loadFrame(html){return new Promise(res=>{let done=false;const fin=()=>{if(done)return;done=true;checkFrame.removeEventListener("load",fin);res(checkFrame.contentDocument);};checkFrame.addEventListener("load",fin);checkFrame.srcdoc=html;setTimeout(fin,5000);});}
 const isClear=c=>!c||c==="transparent"||/rgba\([^)]*,\s*0(\.0+)?\s*\)$/.test(c);
-function getHtmlResults(html,brandHex){
+function getHtmlResults(html,brandHex,ctx){ctx=ctx||{};
   if(!html||!html.trim())return form.locked?[{label:"Email HTML",status:"todo",detail:"Paste the HTML of the revised EDM."}]:[{label:"Email HTML",status:"info",detail:"Not pasted. Alt text, title text, links and exact colors are covered only by your manual checklist."}];
-  const key=brandHex+"|"+html.length+"|"+html.slice(0,200)+html.slice(-200)+"|"+html;
+  const key=brandHex+"|"+(ctx.campaign||"")+"|"+(ctx.utm||"")+"|"+html.length+"|"+html.slice(0,200)+html.slice(-200)+"|"+html;
   if(htmlCache.key===key)return htmlCache.result;
   if(htmlCache.pendingKey!==key){htmlCache.pendingKey=key;
-    loadFrame(html).then(async doc=>{let r;try{const probe=await probeImages(doc);r=htmlChecks(doc,checkFrame.contentWindow,html,brandHex,probe);}catch(e){r=[{label:"Email HTML",status:"warn",detail:"The HTML could not be read. Copy it again from the code view."}];}
+    loadFrame(html).then(async doc=>{let r;try{const probe=await probeImages(doc);r=htmlChecks(doc,checkFrame.contentWindow,html,brandHex,probe,ctx);}catch(e){r=[{label:"Email HTML",status:"warn",detail:"The HTML could not be read. Copy it again from the code view."}];}
       if(htmlCache.pendingKey===key){htmlCache={key,result:r,pendingKey:null};refresh();}});}
   return[{label:"Reading the HTML…",status:"todo",detail:""}];
 }
@@ -192,7 +197,7 @@ function getHtmlResults(html,brandHex){
 function imgSrcs(doc){return[...new Set([...doc.querySelectorAll("img[src],mj-image[src]")].map(i=>(i.getAttribute("src")||"").trim()).filter(s=>/^https?:\/\//i.test(s)))].slice(0,60);}
 function probeImages(doc){return Promise.all(imgSrcs(doc).map(src=>new Promise(res=>{const im=new Image();let done=false;const fin=v=>{if(!done){done=true;res([src,v]);}};
   im.onload=()=>fin({ok:true,w:im.naturalWidth,h:im.naturalHeight});im.onerror=()=>fin({ok:false});setTimeout(()=>fin(null),10000);im.src=src;}))).then(e=>new Map(e)).catch(()=>new Map());}
-function htmlChecks(doc,win,html,brandHex,probe){
+function htmlChecks(doc,win,html,brandHex,probe,ctx){ctx=ctx||{};
   const out=[];const brand=normColor(brandHex);const lower=html.toLowerCase();
   const css=n=>win.getComputedStyle(n);
   const colorOf=n=>normColor(css(n).color);
@@ -322,6 +327,27 @@ function htmlChecks(doc,win,html,brandHex,probe){
       let b=n;while(b&&!BLOCK.test(b.tagName))b=b.parentElement;if(b&&b!==exploreEl)blocks.add(b);}
     const long=[...blocks].filter(b=>![...b.querySelectorAll("p,div,td,li,table")].some(c=>c.textContent.trim())).map(b=>b.textContent.trim().replace(/\s+/g," ")).filter(t=>t.length>160);
     out.push({label:"Offer descriptions 160 characters or less",status:long.length?"warn":"pass",detail:long.length?long.slice(0,2).map(t=>`${t.length} characters: "${t.slice(0,50)}…"`).join("; "):""});}
+  // main offer: everything above "Explore More Offers", except the logo (first image)
+  {const top=n=>!exploreEl||after(n,exploreEl);
+    const pics=imgEls.filter(top).filter(i=>{const w=parseFloat(i.getAttribute("width"));return!(w>0&&w<=2);});const hero=pics[1]||null; /* pics[0] is the hotel logo */
+    const hrefOf=n=>{const t=n.tagName.toLowerCase();return((t==="mj-image"||t==="mj-button")?n.getAttribute("href"):(n.closest("a")||{getAttribute:()=>null}).getAttribute("href"))||"";};
+    const ctas=[...doc.querySelectorAll("mj-button")].filter(top).concat(anchors.filter(a=>top(a)&&!a.querySelector("img")&&!inFooter(a)&&buttons.some(b=>b.a===a)));
+    const links=[...(hero?[hero]:[]),...ctas].map(n=>({n,href:hrefOf(n).trim()})).filter(x=>x.href);
+    const hostOf=u=>{try{return new URL(u).hostname.toLowerCase();}catch(e){return"";}};
+    const off=links.filter(x=>!/(^|\.)swiss-belhotel\.com$/.test(hostOf(x.href)));
+    out.push({label:"Main offer links to swiss-belhotel.com",status:!links.length?"warn":off.length?"fail":"pass",
+      detail:!links.length?"No link found on the main offer image or button above \"Explore More Offers\".":off.length?`Must link to the hotel's offer on swiss-belhotel.com, found: ${[...new Set(off.map(x=>hostOf(x.href)||x.href.slice(0,40)))].slice(0,3).join(", ")}`:`${links.length} main offer link(s) go to swiss-belhotel.com.`});
+    // main offer image alt = promotion name
+    const norm=t=>(t||"").toLowerCase().replace(/[^a-z0-9%]+/g," ").trim();
+    const camp=norm(ctx.campaign);const alt=hero?(hero.getAttribute("alt")||"").trim():"";
+    if(!hero)out.push({label:"Main offer image alt = promotion name",status:"warn",detail:"No main offer image found under the logo."});
+    else if(!camp)out.push({label:"Main offer image alt = promotion name",status:"todo",detail:"Fill in the promotion name (Campaign / main offer name) first."});
+    else{const a=norm(alt);const ok=a===camp||(a.includes(camp)&&camp.length>=4);
+      out.push({label:"Main offer image alt = promotion name",status:ok?"pass":"fail",detail:ok?`"${alt}"`:alt?`Alt text is "${alt.slice(0,60)}"; it should be "${ctx.campaign.trim()}".`:`Alt text is empty; it should be "${ctx.campaign.trim()}".`});}}
+  // UTM already in the links (Whizzmailer can add it; if it is there, it must match)
+  {const utms=new Set();doc.querySelectorAll("a[href],mj-button[href],mj-image[href]").forEach(n=>{try{const v=new URL(n.getAttribute("href")).searchParams.get("utm_campaign");if(v)utms.add(v);}catch(e){}});
+    if(utms.size&&ctx.utm){const bad=[...utms].filter(v=>v!==ctx.utm);
+      out.push({label:"UTM campaign in links",status:bad.length?"fail":"pass",detail:bad.length?`Found ${bad.slice(0,2).map(v=>`"${v}"`).join(", ")}; expected "${ctx.utm}".`:`All links use "${ctx.utm}".`});}}
   // prices: show the currency and whether they are nett
   const stopAt=sbecEl||footEl;const parts=[];const w3=doc.createTreeWalker(doc.body||doc.documentElement,NodeFilter.SHOW_TEXT);let y;
   while((y=w3.nextNode())){const n=y.parentElement;if(!n||n.closest("mj-head,style,script,title"))continue;if(stopAt&&!after(n,stopAt)&&n!==stopAt)break;parts.push(y.textContent);}
@@ -413,7 +439,7 @@ function refresh(){
   expectLine("x-utm",h?expUtm(h.code,f.start):"","f-utm");
   expectLine("x-from",h?h.name:"","f-from");
   const others=null;
-  const dl=deliveryChecks(f,others);const hl=h?getHtmlResults(f.html,BRANDS[h.brand].hex):[{label:"Email HTML",status:"todo",detail:"Choose your hotel first."}];
+  const dl=deliveryChecks(f,others);const hl=h?getHtmlResults(f.html,BRANDS[h.brand].hex,{campaign:f.campaign,utm:expUtm(h.code,f.start)}):[{label:"Email HTML",status:"todo",detail:"Choose your hotel first."}];
   const manualDone=MANUAL_IDS.filter(id=>form.checks[id]).length;
   const aiSt=aiStatus();
   const all=[...dl,...hl.filter(x=>x.status!=="info")];
@@ -448,7 +474,7 @@ function refresh(){
   const man=el("details",{class:"grp","data-k":"manual"});if(open.has("manual")||first)man.open=true;
   man.append(el("summary",null,dot(manualDone===MANUAL_IDS.length?"pass":"todo"),"Your checklist",el("span",{class:"tally"},`${manualDone}/${MANUAL_IDS.length}`)));
   const mb=el("div",{class:"manual",style:"padding:0 18px 14px;display:flex;flex-direction:column;gap:10px"});
-  MANUAL.forEach(g=>{if(g.sec)mb.append(el("div",{style:"font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:4px"},g.sec));g.items.forEach(([id,txt])=>{const cb=el("input",{type:"checkbox",id:"m-"+id});cb.checked=!!form.checks[id];cb.addEventListener("change",()=>{form.checks[id]=cb.checked;refresh();});mb.append(el("label",{for:"m-"+id},cb,el("span",null,txt)));});});
+  MANUAL.forEach(g=>{if(g.sec)mb.append(el("div",{style:"font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:4px"},g.sec));g.items.forEach(([id,txt])=>{const cb=el("input",{type:"checkbox",id:"m-"+id});cb.checked=!!form.checks[id];cb.addEventListener("change",()=>{form.checks[id]=cb.checked;refresh();});mb.append(el("label",{for:"m-"+id},cb,el("span",null,manualText(txt,f))));});});
   man.append(mb);rail.append(man);
   // blockers
   const blk=[];
@@ -680,8 +706,8 @@ function renderDetail(){
     rr?el("p",{style:"margin:0 0 8px;font-size:12px;color:var(--muted)"},"Re-checked just now with the current checker (not saved)."):null,
     checkList(rr||r.html||[]),
     s.html&&hb?el("div",{class:"btnrow",style:"margin-top:10px"},el("button",{type:"button",class:"btn small",onclick:async e=>{e.target.disabled=true;e.target.textContent="Checking…";
-      try{const d=await loadFrame(s.html);const probe=await probeImages(d);recheckCache.set(id,htmlChecks(d,checkFrame.contentWindow,s.html,hb,probe));htmlCache.key=null;}catch(err){toast("Could not re-check this HTML.");}renderDetail();}},"Re-run HTML check")):null));
-  const ck=s.checks||{};kids.push(el("div",{class:"sec"},el("h3",null,`Hotel checklist · ${MANUAL_IDS.filter(i=>ck[i]).length}/${MANUAL_IDS.length} confirmed`),checkList(MANUAL.flatMap(g=>g.items.map(([i,t])=>({label:g.sec?`${g.sec}: ${t}`:t,status:ck[i]?"pass":"todo"}))))));
+      try{const d=await loadFrame(s.html);const probe=await probeImages(d);recheckCache.set(id,htmlChecks(d,checkFrame.contentWindow,s.html,hb,probe,{campaign:s.campaign,utm:expUtm(s.hotelCode,s.start)}));htmlCache.key=null;}catch(err){toast("Could not re-check this HTML.");}renderDetail();}},"Re-run HTML check")):null));
+  const ck=s.checks||{};kids.push(el("div",{class:"sec"},el("h3",null,`Hotel checklist · ${MANUAL_IDS.filter(i=>ck[i]).length}/${MANUAL_IDS.length} confirmed`),checkList(MANUAL.flatMap(g=>g.items.map(([i,t])=>({label:g.sec?`${g.sec}: ${manualText(t,s)}`:manualText(t,s),status:ck[i]?"pass":"todo"}))))));
   if(d&&(d.history||[]).length)kids.push(el("div",{class:"sec"},el("h3",null,"Review history"),el("div",{class:"hist"},d.history.slice().reverse().map(x=>el("div",null,statusPill(x.status)," ",el("span",{class:"code"},fmtWhen(x.at))," · ",nameOf(x.by),x.note?el("div",{style:"white-space:pre-wrap;margin-top:2px"},x.note):null)))));
   if(isApprover&&st!=="draft"){
     const note=el("textarea",{class:"plain",id:"d-note",placeholder:"What should the hotel change? Required when sending back."});
