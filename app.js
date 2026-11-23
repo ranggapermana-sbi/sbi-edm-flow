@@ -890,18 +890,18 @@ function renderAccounts(){F("acc-box").hidden=!isAdmin;if(!isAdmin)return;
 /* Where-to-find-it help: an (i) next to a field label shows the matching Whizzmailer screenshot from
    the EDM Template Guidelines 2026. Hover or keyboard focus shows it; a tap toggles it on phones. */
 const FIELD_HELP={
-  "f-subject":["subject","Whizzmailer → Delivery setting → Subject (1)."],
-  "f-preheader":["preheader","Whizzmailer → Delivery setting → Preheader Text (3)."],
-  "f-start":["start","Delivery setting → Start sending at (10). Turn on Available for use (9) first."],
-  "f-stop":["stop","Delivery setting → Stop sending at (11). At most 5 days after the start."],
-  "f-internal":["internal","Delivery setting → Internal Name (2). Format: [HOTEL CODE] - DD Mon YYYY."],
-  "f-utm":["utm","Delivery setting → UTM tags → Campaign name (12). Do not change source (10) and medium (11)."],
-  "f-from":["from","Advanced → From name (1). Use the complete hotel name."],
-  "f-replyto":["replyto","Advanced → Reply to address (3). The hotel's reservations or department email."],
-  "f-preview":["preview","Preview → toggle Preview URL on (1), then double-click the URL to copy it (2)."]};
+  "f-subject":["subject","Whizzmailer → Delivery setting → Subject."],
+  "f-preheader":["preheader","Whizzmailer → Delivery setting → Preheader Text."],
+  "f-start":["start","Delivery setting → Start sending at. Turn on Available for use first."],
+  "f-stop":["stop","Delivery setting → Stop sending at. At most 5 days after the start."],
+  "f-internal":["internal","Delivery setting → Internal Name. Format: [HOTEL CODE] - DD Mon YYYY."],
+  "f-utm":["utm","Delivery setting → UTM tags → Campaign name. Do not change Campaign source and Campaign medium."],
+  "f-from":["from","Advanced → From name. Use the complete hotel name."],
+  "f-replyto":["replyto","Advanced → Reply to address. The hotel's reservations or department email."],
+  "f-preview":["preview","Preview → turn on the Preview URL toggle, then double-click the URL to copy it."]};
 function addFieldHelp(){Object.entries(FIELD_HELP).forEach(([id,[img,cap]])=>{const inp=F(id);const lab=inp&&inp.closest("label");if(!lab||lab.querySelector(".tip"))return;
   const tip=el("span",{class:"tip",tabindex:"0",role:"button","aria-label":"Where to find this in Whizzmailer","aria-expanded":"false"},"i",
-    el("span",{class:"tip-pop",role:"tooltip"},el("img",{src:`/img/help/${img}.png`,alt:`Whizzmailer screenshot: ${cap}`,loading:"lazy"}),el("span",null,cap)));
+    el("span",{class:"tip-pop",role:"tooltip"},el("img",{src:`/img/help/${img}.png?v=2`,alt:`Whizzmailer screenshot: ${cap}`,loading:"lazy"}),el("span",null,cap)));
   const toggle=e=>{e.preventDefault();e.stopPropagation();const on=!tip.classList.contains("open");document.querySelectorAll(".tip.open").forEach(t=>{t.classList.remove("open");t.setAttribute("aria-expanded","false");});if(on){tip.classList.add("open");tip.setAttribute("aria-expanded","true");}};
   tip.addEventListener("click",toggle);tip.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" ")toggle(e);if(e.key==="Escape"){tip.classList.remove("open");tip.blur();}});
   const first=[...lab.childNodes].find(n=>n.nodeType===3&&n.textContent.trim());
