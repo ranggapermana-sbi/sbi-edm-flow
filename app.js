@@ -942,7 +942,7 @@ ax.hq.addEventListener("change",addHotelChip);
 ax.hq.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();addHotelChip();}});
 F("a-form").addEventListener("submit",async e=>{e.preventDefault();
   const email=ax.email.value.trim().toLowerCase();if(ax.hq.value.trim())addHotelChip();
-  if(!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)){ax.msg.textContent="Enter a valid email address.";return;}
+  if(!/^[^@\s]+@swiss-belhotel\.com$/i.test(email)){ax.msg.textContent="Enter a @swiss-belhotel.com email address.";return;}
   if(!newHotels.length){ax.msg.textContent="Add at least one hotel.";return;}
   ax.add.disabled=true;const rows=newHotels.map(c=>({email,hotel_code:c,added_by:myEmail}));
   const{error}=await db.from("hotel_members").upsert(rows,{onConflict:"email,hotel_code",ignoreDuplicates:true});ax.add.disabled=false;
@@ -978,7 +978,7 @@ async function renderAccess(reload){if(!isApprover)return;
 /* Reviewers: everyone with reviewer rights can see the list; only super admins change it. */
 F("r-form").addEventListener("submit",async e=>{e.preventDefault();if(!isAdmin)return;
   const email=F("r-email").value.trim().toLowerCase();const role=F("r-role").value;const msg=F("r-msg");
-  if(!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)){msg.textContent="Enter a valid email address.";return;}
+  if(!/^[^@\s]+@swiss-belhotel\.com$/i.test(email)){msg.textContent="Enter a @swiss-belhotel.com email address.";return;}
   if(reviewerRows.some(r=>r.email.toLowerCase()===email)){msg.textContent="This email is already a reviewer. Change its role in the list below.";return;}
   F("r-add").disabled=true;const{error}=await db.from("reviewers").insert({email,role,added_by:myEmail});F("r-add").disabled=false;
   if(error){msg.textContent="Could not save: "+error.message;return;}
@@ -1009,14 +1009,7 @@ function genPassword(){const abc="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwx
 async function adminCall(payload){const r=await fetch("/api/admin-users",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify(payload)});
   let d={};try{d=await r.json();}catch(e){}if(!r.ok)throw new Error(d.error||"Could not save.");return d;}
 async function loadAccounts(reload){if(reload||!accountsLoaded){const{data,error}=await db.rpc("account_overview");accounts=error?[]:(data||[]);accountsLoaded=true;}renderAccounts();}
-F("acc-gen").addEventListener("click",()=>{F("acc-pw").value=genPassword();});
 F("acc-search").addEventListener("input",renderAccounts);
-F("acc-form").addEventListener("submit",async e=>{e.preventDefault();const email=F("acc-email").value.trim().toLowerCase(),pw=F("acc-pw").value,m=F("acc-msg");
-  if(!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)){m.textContent="Enter a valid email address.";return;}
-  if(pw.length<8){m.textContent="The temporary password needs at least 8 characters.";return;}
-  F("acc-add").disabled=true;try{await adminCall({action:"create",email,password:pw});m.textContent="";F("acc-email").value="";F("acc-pw").value="";
-    toast(`Account created for ${email}. Share the temporary password with them, then give hotel access above.`);ax.email.value=email;renderAccess(true);}
-  catch(err){m.textContent=err.message;}finally{F("acc-add").disabled=false;}});
 const tmpDlg=F("tmp-dialog");let tmpUser=null;
 function openReset(a){tmpUser=a;F("tmp-who").textContent=`For ${a.email}. They must choose their own password at the next sign-in.`;F("tmp-pw").value=genPassword();F("tmp-msg").textContent="";F("tmp-msg").style.color="";F("tmp-save").hidden=false;try{tmpDlg.showModal();}catch(e){tmpDlg.setAttribute("open","");}}
 F("tmp-gen").addEventListener("click",()=>{F("tmp-pw").value=genPassword();});
@@ -1030,16 +1023,17 @@ async function setBlocked(a,block){try{await adminCall({action:block?"block":"un
 function renderAccounts(){F("acc-box").hidden=!isAdmin;if(!isAdmin)return;
   const roles=new Map(reviewerRows.map(r=>[r.email.toLowerCase(),r.role]));const hotels=new Map();accessRows.forEach(r=>{if(!hotels.has(r.email))hotels.set(r.email,[]);hotels.get(r.email).push(r.hotel_code);});
   const q=F("acc-search").value.trim().toLowerCase();const rows=accounts.filter(a=>!q||a.email.includes(q));
-  F("acc-count").textContent=`${accounts.length} account(s) · ${accounts.filter(a=>!a.has_password).length} without password · ${accounts.filter(a=>a.blocked).length} blocked`;
+  F("acc-count").textContent=`${accounts.length} account(s) · ${accounts.filter(a=>a.blocked).length} blocked`;
   F("acc-body").replaceChildren(...(rows.length?rows.map(a=>{const me=a.email===myEmail.toLowerCase();const role=roles.get(a.email);const hs=hotels.get(a.email)||[];
     const access=role?el("span",{class:"pill "+(role==="admin"?"s-info":"s-pass")},role==="admin"?"Super admin":"Reviewer"):hs.length?el("span",{class:"code"},hs.join(", ")):el("span",{class:"pill s-warn"},"No access");
-    const pw=!a.has_password?el("span",{class:"pill s-warn"},"Not set"):a.must_change?el("span",{class:"pill s-info"},"Temporary"):el("span",{class:"pill s-pass"},"Set");
-    const status=a.blocked?el("span",{class:"pill s-fail"},"Blocked"):!a.confirmed?el("span",{class:"pill s-warn"},"Not confirmed"):el("span",{class:"pill s-pass"},"Active");
+    const google=/google/.test(a.providers||"");const company=COMPANY.test(a.email);
+    const pw=!company?el("span",{class:"pill s-fail"},"Not allowed"):el("span",null,google?el("span",{class:"pill s-pass"},"Google"):el("span",{class:"pill s-warn"},"Not yet with Google"),role==="admin"&&a.has_password?el("div",{style:"font-size:12px;color:var(--muted);margin-top:2px"},a.must_change?"+ temporary password":"+ fallback password"):null);
+    const status=a.blocked?el("span",{class:"pill s-fail"},"Blocked"):!company?el("span",{class:"pill s-fail"},"Cannot sign in"):el("span",{class:"pill s-pass"},"Active");
     return el("tr",null,el("td",null,el("div",{class:"code"},a.email),me?el("div",{style:"font-size:12px;color:var(--muted)"},"You"):null),
       el("td",null,access),el("td",null,pw),
       el("td",{style:"font-size:12px;color:var(--muted);white-space:nowrap"},a.last_sign_in_at?fmtWhen(a.last_sign_in_at):"Never"),
       el("td",null,status),
-      el("td",{style:"white-space:nowrap"},el("button",{type:"button",class:"btn small",onclick:()=>openReset(a)},"Reset password")," ",
+      el("td",{style:"white-space:nowrap"},role==="admin"?el("button",{type:"button",class:"btn small",title:"Fallback password for a super admin",onclick:()=>openReset(a)},"Reset password"):null," ",
         me?null:a.blocked?el("button",{type:"button",class:"btn small",onclick:()=>setBlocked(a,false)},"Unblock"):confirmButton("Block",()=>setBlocked(a,true))));})
     :[el("tr",null,el("td",{colspan:"6",class:"empty"},accounts.length?"No match.":"No accounts yet."))]));}
 
@@ -1101,41 +1095,24 @@ function setSignedIn(on){
 }
 function renderWho(){const w=$("#who");w.replaceChildren();
   if(!session){w.textContent=db?"Signed out":"";return;}
-  w.append(el("span",null,`${myEmail} · ${isAdmin?"Super admin":isApprover?"Reviewer":"Hotel team"}`)," ",el("button",{type:"button",class:"btn small",onclick:()=>openPasswordDialog()},"Set password")," ",el("button",{type:"button",class:"btn small",onclick:async()=>{await db.auth.signOut();}},"Sign out"));}
-/* Sign in: email + password. A one-time email link is still there for first sign-in or a forgotten password. */
-let loginMode="password"; /* password | signup | link */
-function setLoginMode(m){loginMode=m;const msg=F("login-msg");msg.hidden=true;
-  F("login-title").textContent=m==="signup"?"Create your password":m==="link"?"Sign in with an email link":"Sign in";
-  F("login-lede").textContent=m==="signup"?"Use your work email and choose a password (at least 8 characters). We send one email to confirm the address; after that you sign in with your password."
-    :m==="link"?"We email you a one-time sign-in link. After signing in, use \"Set password\" at the top so you don't need links again.":"Sign in with your work email and password.";
-  F("login-pw-wrap").hidden=m==="link";F("login-pw2-wrap").hidden=m!=="signup";
-  F("login-pw").autocomplete=m==="signup"?"new-password":"current-password";
-  F("login-btn").textContent=m==="signup"?"Create password":m==="link"?"Email me a sign-in link":"Sign in";
-  F("mode-signup").hidden=m!=="password";F("mode-link").hidden=m!=="password";F("mode-signin").hidden=m==="password";}
-F("mode-signup").addEventListener("click",()=>setLoginMode("signup"));
-F("mode-link").addEventListener("click",()=>setLoginMode("link"));
-F("mode-signin").addEventListener("click",()=>setLoginMode("password"));
+  w.append(el("span",null,`${myEmail} · ${isAdmin?"Super admin":isApprover?"Reviewer":"Hotel team"}`)," ",...(isAdmin?[el("button",{type:"button",class:"btn small",title:"Fallback password for when Google sign-in is not working",onclick:()=>openPasswordDialog()},"Set password")," "]:[]),el("button",{type:"button",class:"btn small",onclick:async()=>{await db.auth.signOut();}},"Sign out"));}
+/* Sign in with Google, limited to @swiss-belhotel.com. The database refuses other domains (new accounts
+   are blocked, and every rule checks session_ok()). Super admins can still use a password as a fallback. */
+const COMPANY=/@swiss-belhotel\.com$/i;
+function loginSay(t){const m=F("login-msg");m.hidden=!t;m.textContent=t||"";}
+F("google-btn").addEventListener("click",async()=>{if(!db)return;const b=F("google-btn");b.disabled=true;b.textContent="Opening Google…";
+  const{error}=await db.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.origin+location.pathname,queryParams:{hd:"swiss-belhotel.com",prompt:"select_account"}}});
+  if(error){b.disabled=false;b.textContent="Sign in with Google";loginSay(/not enabled|provider/i.test(error.message)?"Google sign-in is not switched on yet. Ask Group Digital Marketing.":"Could not open Google sign-in: "+error.message);}});
 F("login-form").addEventListener("submit",async e=>{e.preventDefault();if(!db)return;
-  const email=F("login-email").value.trim().toLowerCase();const pw=F("login-pw").value;const btn=F("login-btn");const msg=F("login-msg");const label=btn.textContent;
-  const say=t=>{msg.hidden=false;msg.textContent=t;};
-  if(!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email))return say("Enter a valid email address.");
-  if(loginMode!=="link"&&pw.length<8)return say("The password needs at least 8 characters.");
-  if(loginMode==="signup"&&pw!==F("login-pw2").value)return say("The two passwords are not the same.");
-  btn.disabled=true;btn.textContent="Please wait…";
-  try{
-    if(loginMode==="password"){const{error}=await db.auth.signInWithPassword({email,password:pw});
-      if(error)say(/confirm/i.test(error.message)?"Confirm your email first: open the link we sent when you created your password.":"Wrong email or password. If you used to sign in with an email link, choose \"Forgot your password?\" once, then set a password at the top.");
-      else msg.hidden=true;}
-    else if(loginMode==="signup"){const{data,error}=await db.auth.signUp({email,password:pw,options:{emailRedirectTo:location.origin+location.pathname}});
-      if(error)say(/rate|limit|seconds/i.test(error.message)?"Too many emails were sent just now. Wait a minute and try again.":/registered|exists/i.test(error.message)?"This email already has an account. Sign in with your password, or use \"Forgot your password?\".":"Could not create the password: "+error.message);
-      else if(data&&data.session)msg.hidden=true;
-      else if(data&&data.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0)
-        say(`${email} already has an account, so no email was sent. Sign in with your password. If you never made one (for example you signed in with email links before), use "Forgot your password?" to get a sign-in link, then click "Set password" at the top.`);
-      else say(`We sent a confirmation email to ${email}. Open it once in this browser; after that you sign in with your password. If this email already had an account, sign in with your password or use "Forgot your password?".`);}
-    else{const{error}=await db.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}});
-      say(error?(/rate|limit|seconds/i.test(error.message)?"Too many sign-in emails. Wait a minute and try again.":"Could not send the link: "+error.message)
-        :`Check the inbox of ${email} and open the sign-in link in this same browser. It can take a minute to arrive; also check the spam folder.`);}
-  }finally{btn.disabled=false;btn.textContent=label;}});
+  const email=F("login-email").value.trim().toLowerCase();const pw=F("login-pw").value;const btn=F("login-btn");
+  if(!COMPANY.test(email))return loginSay("Use your @swiss-belhotel.com email.");
+  if(pw.length<8)return loginSay("The password needs at least 8 characters.");
+  btn.disabled=true;try{const{error}=await db.auth.signInWithPassword({email,password:pw});loginSay(error?"Wrong email or password. Everyone except super admins signs in with Google.":"");}finally{btn.disabled=false;}});
+window.addEventListener("pageshow",()=>{const b=F("google-btn");b.disabled=false;b.textContent="Sign in with Google";});
+/* Google sends errors back in the address (for example an account outside @swiss-belhotel.com) */
+{const q=new URLSearchParams(location.search+"&"+location.hash.slice(1));const err=q.get("error_description")||q.get("error");
+  if(err){loginSay(/swiss-belhotel|database error|saving new user/i.test(err)?"Only @swiss-belhotel.com Google accounts can sign in. Choose your Swiss-Belhotel account in the Google window.":"Sign-in failed: "+err);
+    try{history.replaceState({},"",location.pathname);}catch(e){}}}
 /* Set or change the password while signed in */
 const pwDlg=F("pw-dialog");
 let pwForced=false;
@@ -1147,18 +1124,21 @@ F("pw-form").addEventListener("submit",async e=>{e.preventDefault();const a=F("p
   if(a.length<8){m.textContent="At least 8 characters.";return;}if(a!==b){m.textContent="The two passwords are not the same.";return;}
   F("pw-save").disabled=true;const{error}=await db.auth.updateUser({password:a,data:{must_change_password:false}});F("pw-save").disabled=false;
   if(error){m.textContent=/different|same/i.test(error.message)?"Choose a password different from the current one.":"Could not save: "+error.message;return;}
-  pwDlg.close();toast("Password saved. Next time, sign in with your email and password.");});
+  pwDlg.close();toast("Fallback password saved. Use it only when Google sign-in is not working.");});
 
 let lastUser;
 async function onSession(s){
   session=s;const uid=s?s.user.id:null;if(uid===lastUser){renderWho();return;}lastUser=uid;
   if(!s){myId=null;myEmail="";isApprover=false;isAdmin=false;myHotels=[];subs=new Map();decisions=new Map();reports=new Map();fullCache.clear();renderWho();setSignedIn(false);return;}
   myId=s.user.id;myEmail=s.user.email||"";
-  const[{data:rv},{data:ad}]=await Promise.all([db.rpc("is_reviewer"),db.rpc("is_admin")]);isApprover=!!rv;isAdmin=!!(rv&&ad);
+  const[{data:ok,error:okErr},{data:rv},{data:ad}]=await Promise.all([db.rpc("session_ok"),db.rpc("is_reviewer"),db.rpc("is_admin")]);
+  if(!okErr&&ok!==true){const company=COMPANY.test(myEmail);lastUser=undefined;await db.auth.signOut();
+    loginSay(company?"Please sign in with Google. Password sign-in is only for super admins.":`${myEmail} is not a Swiss-Belhotel account. Sign in with your @swiss-belhotel.com Google account.`);return;}
+  isApprover=!!rv;isAdmin=!!(rv&&ad);
   F("tab-overview").hidden=false; /* hotels see a version limited to their own hotel */
   F("tab-access").hidden=!isApprover;if(!isApprover&&currentView==="access")currentView="queue";
   await loadMyHotels();
-  if(s.user.user_metadata&&s.user.user_metadata.must_change_password)setTimeout(()=>openPasswordDialog(true),300);
+  if(isAdmin&&s.user.user_metadata&&s.user.user_metadata.must_change_password)setTimeout(()=>openPasswordDialog(true),300);
   renderWho();setSignedIn(true);await loadData();refresh();openPendingTicket();
 }
 (async function init(){

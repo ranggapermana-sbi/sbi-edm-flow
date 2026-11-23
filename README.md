@@ -13,7 +13,7 @@ Portal tempat tim hotel SBI mengajukan EDM, memeriksa sendiri (self-inspection) 
 | `index.html`, `app.js` | Tampilan portal: form submit, self-inspection, tickets, overview, guidelines |
 | `api/config.js` | Memberi tahu browser alamat Supabase (hanya nilai yang memang aman untuk publik) |
 | `api/visual-check.js` | Mengirim screenshot ke Claude. Hanya bisa dipanggil oleh user yang sudah login |
-| `api/admin-users.js` | Aksi akun untuk super admin: buat akun, password sementara, blokir/buka blokir |
+| `api/admin-users.js` | Aksi akun untuk super admin: password cadangan super admin, blokir/buka blokir |
 | `api/cleanup.js` | Menghapus tiket dan screenshot yang berumur lebih dari 3 bulan + 1 hari (dijalankan cron harian) |
 | `supabase/schema.sql` | Tabel, aturan keamanan, nomor tiket, dan storage screenshot |
 
@@ -38,18 +38,28 @@ Portal tempat tim hotel SBI mengajukan EDM, memeriksa sendiri (self-inspection) 
    ```
    Semua email yang ada di tabel ini bisa melihat semua tiket dan memberi keputusan. Email lain otomatis dianggap tim hotel.
 
-### 3. Supabase: login (password + link email cadangan)
-1. Buka **Authentication → Sign In / Providers → Email**, lalu pastikan **Email** aktif dan **Confirm email** tetap aktif (supaya orang tidak bisa mendaftar memakai email orang lain).
-   - Login utama memakai **email + password**. Pengguna baru klik *First time here? Create a password*, lalu membuka satu email konfirmasi.
-   - Kalau lupa password: *Forgot your password? Email me a sign-in link*, lalu klik **Set password** di atas.
-   - Untuk akun uji coba tanpa email sama sekali: **Authentication → Users → Add user → Create new user**, isi email + password, centang *Auto Confirm User*.
-2. Buka **Authentication → URL Configuration**:
-   - **Site URL**: isi dengan URL Vercel, misalnya `https://sbi-edm-flow.vercel.app`
-   - **Redirect URLs**: tambahkan URL yang sama
-3. **Penting: atur SMTP sendiri.** Layanan email bawaan Supabase hanya untuk uji coba. Kuotanya sangat kecil, dan (sesuai dokumentasi Supabase saat ini) hanya mengirim ke email anggota tim project. Supaya link login sampai ke email hotel, buka **Authentication → Emails → SMTP Settings** dan isi dengan SMTP perusahaan atau layanan seperti Resend, SendGrid, atau Brevo.
-4. Opsional: ubah template **Magic Link** di **Authentication → Emails** supaya isinya menyebut "SBI EDM Approval".
+### 3. Login: Google (SSO) khusus @swiss-belhotel.com
+Semua orang login dengan akun Google @swiss-belhotel.com. Super admin masih bisa memakai password sebagai cadangan kalau Google bermasalah.
 
-> Siapa yang boleh login? Secara default, siapa pun yang punya link portal bisa login dengan email apa saja. Mereka hanya akan melihat tiketnya sendiri, tetapi bisa ikut submit. Kalau ingin membatasi, matikan **Allow new users to sign up** di Authentication settings, lalu undang email hotel lewat **Authentication → Users → Invite user**.
+**A. Google Cloud Console** (pakai akun @swiss-belhotel.com, di https://console.cloud.google.com):
+1. Buat project, misalnya `SBI EDM Portal`.
+2. **Google Auth Platform → Branding**: isi nama aplikasi `SBI EDM Approval` dan support email.
+3. **Audience**: pilih **Internal**, supaya hanya akun Google Workspace Swiss-Belhotel yang bisa masuk. (Kalau pilihan Internal tidak ada, project belum berada di organisasi swiss-belhotel.com; minta bantuan IT.)
+4. **Clients → Create client → Web application**:
+   - Authorized JavaScript origins: `https://sbi-edm-approval.vercel.app`
+   - Authorized redirect URIs: `https://<project-ref>.supabase.co/auth/v1/callback` (persisnya tertulis di halaman provider Google di Supabase, sebagai *Callback URL*)
+5. Salin **Client ID** dan **Client secret**.
+
+**B. Supabase**:
+1. **Authentication → Sign In / Providers → Google**: aktifkan, tempel Client ID dan Client secret, lalu Save.
+2. **Authentication → URL Configuration**: Site URL `https://sbi-edm-approval.vercel.app`, dan Redirect URLs berisi `https://sbi-edm-approval.vercel.app/**`.
+
+**Yang dijaga database** (lihat `session_ok()` di schema.sql):
+- Akun baru di luar @swiss-belhotel.com ditolak saat pertama login.
+- Semua tabel dan screenshot hanya bisa dibaca/diubah dari sesi Google @swiss-belhotel.com, atau sesi password milik super admin. Sesi password lama milik hotel/reviewer tidak bisa melihat apa pun.
+- Hotel access dan reviewer hanya bisa diisi email @swiss-belhotel.com.
+
+Orang baru cukup login sekali dengan Google, lalu muncul di Access → *Signed in, waiting for access*; tinggal dihubungkan ke hotelnya.
 
 ### 4. Vercel: deploy
 1. Di [vercel.com](https://vercel.com), pilih **Add New → Project**, lalu import repo `sbi-edm-flow`.
@@ -104,7 +114,7 @@ Di halaman yang sama ada bagian **Reviewers**:
 - **Super admin** bisa menambah atau menghapus reviewer, mengubah role (Reviewer / Super admin), dan memberi akses hotel.
 - **Reviewer** bisa melihat daftar reviewer dan memberi akses hotel, tetapi tidak bisa mengubah daftar reviewer.
 - Minimal harus selalu ada satu super admin; database menolak perubahan yang menghapus super admin terakhir.
-- Bagian **Accounts** (khusus super admin): status semua akun (password sudah dibuat/belum/sementara, login terakhir, aktif/diblokir). Super admin bisa **membuat akun** dengan password sementara tanpa mengirim email, **reset password** (password sementara), dan **memblokir/membuka blokir** akun. Password yang dibuat pengguna tidak pernah bisa dilihat siapa pun; password sementara wajib diganti pemiliknya saat login berikutnya. Butuh `SUPABASE_SECRET_KEY` di Vercel (sudah dipakai untuk pembersihan harian).
+- Bagian **Accounts** (khusus super admin): semua akun yang pernah login, cara login (Google), login terakhir, dan tombol **Block/Unblock**. Akun dibuat otomatis saat orang login pertama kali dengan Google. **Reset password** hanya untuk password cadangan super admin; password tidak pernah bisa dilihat siapa pun.
 - Super admin juga bisa **menghapus tiket** dari detail tiket (bagian *Super admin* → *Delete ticket*). Review dan semua screenshot tiket itu ikut terhapus, dan tidak bisa dibatalkan.
 
 ## Aturan yang dijaga oleh database

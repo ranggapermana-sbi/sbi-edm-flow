@@ -19,6 +19,28 @@ do $$ begin
   alter table public.reviewers add constraint reviewers_role_check check (role in ('reviewer', 'admin'));
 exception when duplicate_object then null; end $$;
 
+-- Company sign-in: only @swiss-belhotel.com accounts, signed in with Google (SSO).
+-- A super admin may also use a password, as a fallback if Google sign-in has a problem.
+-- Every rule below goes through session_ok(), so an older password session of a
+-- hotel or reviewer account, or any other email domain, sees and changes nothing.
+create or replace function public.session_ok()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select lower(coalesce(auth.jwt() ->> 'email', '')) like '%@swiss-belhotel.com'
+     and (
+       exists (select 1 from jsonb_array_elements(coalesce(auth.jwt() -> 'amr', '[]'::jsonb)) a
+               where a ->> 'method' in ('oauth', 'sso/saml'))
+       or exists (select 1 from public.reviewers
+                  where lower(email) = lower(auth.jwt() ->> 'email') and role = 'admin')
+     );
+$$;
+revoke all on function public.session_ok() from public, anon;
+grant execute on function public.session_ok() to authenticated;
+
 create or replace function public.is_reviewer()
 returns boolean
 language sql
@@ -26,7 +48,7 @@ stable
 security definer
 set search_path = public
 as $$
-  select exists (
+  select public.session_ok() and exists (
     select 1 from public.reviewers
     where lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
   );
@@ -39,7 +61,7 @@ stable
 security definer
 set search_path = public
 as $$
-  select exists (
+  select public.session_ok() and exists (
     select 1 from public.reviewers
     where lower(email) = lower(coalesce(auth.jwt() ->> 'email', '')) and role = 'admin'
   );
@@ -102,7 +124,7 @@ stable
 security definer
 set search_path = public
 as $$
-  select exists (
+  select public.session_ok() and exists (
     select 1 from public.hotel_members
     where email = lower(coalesce(auth.jwt() ->> 'email', '')) and hotel_code = p_hotel
   );
@@ -290,6 +312,9 @@ declare
   next_no integer;
   result text;
 begin
+  if not public.session_ok() then
+    raise exception 'sign in with your @swiss-belhotel.com Google account';
+  end if;
   select * into t from public.tickets where id = p_id and (owner = auth.uid() or public.is_member(hotel_code));
   if not found then
     raise exception 'ticket not found';
@@ -398,9 +423,11 @@ revoke all on function public.unlinked_users() from public, anon;
 grant execute on function public.unlinked_users() to authenticated;
 
 -- Accounts overview for super admins: never returns passwords, only whether one is set.
+drop function if exists public.account_overview();
 create or replace function public.account_overview()
 returns table (user_id uuid, email text, has_password boolean, confirmed boolean,
-               must_change boolean, last_sign_in_at timestamptz, created_at timestamptz, blocked boolean)
+               must_change boolean, last_sign_in_at timestamptz, created_at timestamptz, blocked boolean,
+               providers text)
 language sql
 stable
 security definer
@@ -411,7 +438,8 @@ as $$
          u.email_confirmed_at is not null,
          coalesce((u.raw_user_meta_data ->> 'must_change_password')::boolean, false),
          u.last_sign_in_at, u.created_at,
-         u.banned_until is not null and u.banned_until > now()
+         u.banned_until is not null and u.banned_until > now(),
+         coalesce((select string_agg(x, ',') from jsonb_array_elements_text(u.raw_app_meta_data -> 'providers') x), '')
   from auth.users u
   where public.is_admin() and u.email is not null
   order by lower(u.email)
@@ -495,6 +523,9 @@ declare
   t public.tickets;
   r public.reviews;
 begin
+  if not public.session_ok() then
+    raise exception 'sign in with your @swiss-belhotel.com Google account';
+  end if;
   select * into t from public.tickets where id = p_id;
   if not found or not (t.owner = auth.uid() or public.is_member(t.hotel_code) or public.is_reviewer()) then
     raise exception 'ticket not found';
@@ -522,11 +553,67 @@ revoke all on function public.submit_report(text, integer, integer, integer) fro
 grant execute on function public.submit_report(text, integer, integer, integer) to authenticated;
 grant select, delete on public.edm_reports to authenticated;
 
+
+-- ============================================================
+-- 5c. Company accounts only
+--     New sign-ins outside @swiss-belhotel.com are refused, and every
+--     table also requires session_ok() (restrictive rules are added on top
+--     of the rules above, so both must pass).
+-- ============================================================
+create or replace function public.only_company_email()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if lower(coalesce(new.email, '')) not like '%@swiss-belhotel.com' then
+    raise exception 'Only @swiss-belhotel.com accounts can use the EDM portal';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists only_company_email on auth.users;
+create trigger only_company_email
+  before insert on auth.users
+  for each row execute function public.only_company_email();
+
+do $$ begin
+  alter table public.hotel_members add constraint hotel_members_company_email
+    check (email like '%@swiss-belhotel.com') not valid;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter table public.reviewers add constraint reviewers_company_email
+    check (lower(email) like '%@swiss-belhotel.com') not valid;
+exception when duplicate_object then null; end $$;
+
+drop policy if exists "company sign-in only" on public.tickets;
+create policy "company sign-in only" on public.tickets as restrictive
+  for all to authenticated using (public.session_ok()) with check (public.session_ok());
+drop policy if exists "company sign-in only" on public.reviews;
+create policy "company sign-in only" on public.reviews as restrictive
+  for all to authenticated using (public.session_ok()) with check (public.session_ok());
+drop policy if exists "company sign-in only" on public.hotel_members;
+create policy "company sign-in only" on public.hotel_members as restrictive
+  for all to authenticated using (public.session_ok()) with check (public.session_ok());
+drop policy if exists "company sign-in only" on public.reviewers;
+create policy "company sign-in only" on public.reviewers as restrictive
+  for all to authenticated using (public.session_ok()) with check (public.session_ok());
+drop policy if exists "company sign-in only" on public.edm_reports;
+create policy "company sign-in only" on public.edm_reports as restrictive
+  for all to authenticated using (public.session_ok()) with check (public.session_ok());
+drop policy if exists "screenshots: company sign-in only" on storage.objects;
+create policy "screenshots: company sign-in only" on storage.objects as restrictive
+  for all to authenticated
+  using (bucket_id <> 'screenshots' or public.session_ok())
+  with check (bucket_id <> 'screenshots' or public.session_ok());
+
 -- Keep access for people who already submitted before hotel access existed.
 insert into public.hotel_members (email, hotel_code, added_by)
 select distinct lower(t.owner_email), t.hotel_code, 'auto: existing ticket'
 from public.tickets t
 where t.owner_email is not null and t.hotel_code ~ '^[A-Z0-9]{2,10}$'
+  and lower(t.owner_email) like '%@swiss-belhotel.com'
 on conflict do nothing;
 
 -- ============================================================

@@ -185,7 +185,9 @@ tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--soft)}
 .swatches div{display:flex;align-items:center;gap:8px;font-size:13px}
 .login{max-width:460px;margin:8vh auto 0;background:var(--card);border:1px solid var(--line);border-radius:12px;padding-block:8px 24px;padding-inline:24px}
 .login form{display:flex;flex-direction:column;gap:14px}
-.login-links{display:flex;flex-direction:column;align-items:flex-start;gap:6px;margin-top:14px}
+.gbtn{width:100%;justify-content:center;padding:11px 16px;font-size:15px}
+.admin-login{margin-top:22px;border-top:1px solid var(--line);padding-top:14px}
+.admin-login summary{cursor:pointer;font-size:13px;color:var(--muted)}
 .linkbtn{background:none;border:0;padding:0;color:var(--accent,#c0392b);font:inherit;font-size:13px;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
 .linkbtn:hover,.linkbtn:focus-visible{text-decoration-thickness:2px}
 dialog.pw{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);padding:20px 22px;max-width:380px;width:calc(100% - 32px)}
@@ -219,32 +221,29 @@ dialog.pw form{display:flex;flex-direction:column;gap:12px}
   <section id="view-login" hidden>
     <div class="login">
       <h1 id="login-title">Sign in</h1>
-      <p class="lede" id="login-lede">Sign in with your work email and password.</p>
-      <form id="login-form" novalidate>
-        <label class="f">Work email
-          <input type="email" id="login-email" placeholder="name@swiss-belhotel.com" autocomplete="email" required>
-        </label>
-        <label class="f" id="login-pw-wrap">Password
-          <input type="password" id="login-pw" autocomplete="current-password" minlength="8">
-        </label>
-        <label class="f" id="login-pw2-wrap" hidden>Repeat password
-          <input type="password" id="login-pw2" autocomplete="new-password" minlength="8">
-        </label>
-        <button class="btn primary" id="login-btn" type="submit">Sign in</button>
-      </form>
-      <div class="login-links">
-        <button type="button" class="linkbtn" id="mode-signup">First time here? Create a password</button>
-        <button type="button" class="linkbtn" id="mode-link">Forgot your password? Email me a sign-in link</button>
-        <button type="button" class="linkbtn" id="mode-signin" hidden>Back to sign in with password</button>
-      </div>
+      <p class="lede" id="login-lede">Use your Swiss-Belhotel Google account (@swiss-belhotel.com). No separate password is needed.</p>
+      <button class="btn primary gbtn" id="google-btn" type="button">Sign in with Google</button>
       <p class="login-msg" id="login-msg" hidden></p>
+      <details class="admin-login" id="admin-login">
+        <summary>Super admin: sign in with password</summary>
+        <p style="margin:8px 0 12px;font-size:13px;color:var(--muted)">Only for super admins, when Google sign-in is not working. Other accounts are signed out again.</p>
+        <form id="login-form" novalidate>
+          <label class="f">Work email
+            <input type="email" id="login-email" placeholder="name@swiss-belhotel.com" autocomplete="email" required>
+          </label>
+          <label class="f">Password
+            <input type="password" id="login-pw" autocomplete="current-password" minlength="8">
+          </label>
+          <button class="btn" id="login-btn" type="submit">Sign in with password</button>
+        </form>
+      </details>
     </div>
   </section>
 
   <dialog class="pw" id="pw-dialog" aria-labelledby="pw-title">
     <form id="pw-form" novalidate>
       <h3 id="pw-title" style="margin:0">Set your password</h3>
-      <p style="margin:0;font-size:13px;color:var(--muted)">Next time, sign in with your email and this password; no email link needed. At least 8 characters.</p>
+      <p style="margin:0;font-size:13px;color:var(--muted)">A fallback for super admins, for when Google sign-in is not working. Everyone else signs in with Google. At least 8 characters.</p>
       <label class="f">New password <input type="password" id="pw-new" autocomplete="new-password" minlength="8" required></label>
       <label class="f">Repeat password <input type="password" id="pw-new2" autocomplete="new-password" minlength="8" required></label>
       <p id="pw-msg" style="margin:0;font-size:13px;color:var(--bad)"></p>
@@ -471,7 +470,7 @@ dialog.pw form{display:flex;flex-direction:column;gap:12px}
   <!-- ACCESS (reviewers only) -->
   <section id="view-access" hidden>
     <h1>Access</h1>
-    <p class="lede">Link each hotel PIC's email to the hotel(s) they handle. Linked people can submit EDMs only for those hotels, and see and revise every ticket of those hotels, whoever created it. For a PIC who handles a cluster, add all their hotels.</p>
+    <p class="lede">Only @swiss-belhotel.com emails can be added. Link each hotel PIC's email to the hotel(s) they handle. Linked people can submit EDMs only for those hotels, and see and revise every ticket of those hotels, whoever created it. For a PIC who handles a cluster, add all their hotels.</p>
     <form class="sec access-add" id="a-form" autocomplete="off">
       <h3>Give access</h3>
       <div class="row">
@@ -518,21 +517,10 @@ dialog.pw form{display:flex;flex-direction:column;gap:12px}
   
     <div id="acc-box" hidden>
       <h2 style="margin-top:32px">Accounts</h2>
-      <p class="lede">Everyone who can sign in. Passwords are never shown: you can see whether one is set, give someone a temporary password, or block an account. A temporary password must be changed by its owner at the next sign-in.</p>
-      <form class="sec access-add" id="acc-form" autocomplete="off">
-        <h3>Create an account</h3>
-        <p style="margin:0 0 10px;font-size:13px;color:var(--muted)">No email is sent. Share the temporary password with the person yourself, then give them hotel access above (or add them as a reviewer).</p>
-        <div class="row">
-          <label class="f">Email <input type="email" id="acc-email" placeholder="name@swiss-belhotel.com" required></label>
-          <label class="f">Temporary password
-            <span style="display:flex;gap:6px"><input type="text" id="acc-pw" autocomplete="off" spellcheck="false" minlength="8" required><button type="button" class="btn small" id="acc-gen">Generate</button></span>
-          </label>
-        </div>
-        <div class="btnrow" style="margin-top:10px"><button type="submit" class="btn primary" id="acc-add">Create account</button><span id="acc-msg" class="d" style="color:var(--bad)"></span></div>
-      </form>
+      <p class="lede">Everyone who has signed in. Accounts are created automatically the first time someone signs in with their @swiss-belhotel.com Google account; then give them hotel access or reviewer rights above. You can block an account here. Super admins can keep a password as a fallback for when Google sign-in is down.</p>
       <div class="toolbar" style="margin-top:20px"><input type="search" id="acc-search" placeholder="Search email" style="max-width:320px"><span id="acc-count" style="color:var(--muted);font-size:13px"></span></div>
       <div class="tablebox"><table>
-        <thead><tr><th>Email</th><th>Access</th><th>Password</th><th>Last sign-in</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Email</th><th>Access</th><th>Sign-in</th><th>Last sign-in</th><th>Status</th><th></th></tr></thead>
         <tbody id="acc-body"></tbody>
       </table></div>
     </div>
